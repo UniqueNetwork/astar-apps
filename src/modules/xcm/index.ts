@@ -75,7 +75,6 @@ export let xcmChainObj: XcmChainObj = {
       'wss://astar-rpc.dwellir.com',
       'wss://astar.public.blastapi.io',
       'wss://astar.api.onfinality.io/public-ws',
-      'wss://astar.public.curie.radiumblock.co/ws',
     ],
     chopsticksEndpoint: 'ws://localhost:9944',
     subscan: 'https://astar.subscan.io',
@@ -91,7 +90,6 @@ export let xcmChainObj: XcmChainObj = {
       'wss://astar-rpc.dwellir.com',
       'wss://astar.public.blastapi.io',
       'wss://astar.api.onfinality.io/public-ws',
-      'wss://astar.public.curie.radiumblock.co/ws',
     ],
     subscan: 'https://astar.subscan.io',
     isAstarNativeToken: false,
@@ -106,7 +104,6 @@ export let xcmChainObj: XcmChainObj = {
       'wss://kusama-rpc.dwellir.com',
       'wss://kusama-rpc.dwellir.com',
       'wss://kusama.api.onfinality.io/public-ws',
-      'wss://kusama.public.curie.radiumblock.co/ws',
     ],
     subscan: 'https://kusama.subscan.io',
     isAstarNativeToken: false,
@@ -152,7 +149,6 @@ export let xcmChainObj: XcmChainObj = {
       'wss://statemine-rpc.dwellir.com',
       'wss://rpc-asset-hub-kusama.luckyfriday.io',
       'wss://statemine.api.onfinality.io/public-ws',
-      'wss://statemine.public.curie.radiumblock.co/ws',
     ],
     subscan: 'https://assethub-kusama.subscan.io',
     isAstarNativeToken: false,
@@ -229,7 +225,6 @@ export let xcmChainObj: XcmChainObj = {
       'wss://statemint-rpc.dwellir.com',
       'wss://polkadot-asset-hub-rpc.polkadot.io',
       'wss://statemint.api.onfinality.io/public-ws',
-      'wss://statemint.public.curie.radiumblock.co/ws',
     ],
     subscan: 'https://assethub-polkadot.subscan.io',
     isAstarNativeToken: false,
@@ -350,6 +345,29 @@ export let xcmChainObj: XcmChainObj = {
     subscan: 'https://unique.subscan.io',
     isAstarNativeToken: false,
   },
+  [Chain.HYDRATION]: {
+    name: Chain.HYDRATION,
+    relayChain: Chain.POLKADOT,
+    img: require('/src/assets/img/token/hdx.png'),
+    parachainId: parachainIds.HYDRATION,
+    endpoints: [
+      'wss://hydradx-rpc.dwellir.com',
+      'wss://rpc.hydradx.cloud',
+      'wss://hydradx.paras.ibp.network',
+      'wss://rpc.helikon.io/hydradx',
+    ],
+    subscan: 'https://hydration.subscan.io',
+    isAstarNativeToken: true,
+  },
+  [Chain.PENDULUM]: {
+    name: Chain.PENDULUM,
+    relayChain: Chain.POLKADOT,
+    img: require('/src/assets/img/token/PEN.svg'),
+    parachainId: parachainIds.PENDULUM,
+    endpoints: ['wss://rpc-pendulum.prd.pendulumchain.tech:443'],
+    subscan: 'https://pendulum.subscan.io/',
+    isAstarNativeToken: false,
+  },
 };
 
 export const xcmChains = objToArray(xcmChainObj);
@@ -364,7 +382,13 @@ export const polkadotParachains = xcmChains.filter(
 
 // Todo: ideally use a content management to manage it
 export const restrictedXcmNetwork = {
-  [astarChain.ASTAR]: [],
+  [astarChain.ASTAR]: [
+    {
+      chain: Chain.EQUILIBRIUM,
+      isRestrictedFromNative: true,
+      isRestrictedFromEvm: true,
+    },
+  ],
   [astarChain.SHIDEN]: [
     {
       chain: '',
@@ -377,5 +401,5 @@ export const restrictedXcmNetwork = {
   [astarChain.DEVELOPMENT]: [],
   [astarChain.ROCSTAR]: [],
   [astarChain.ASTAR_ZKEVM]: [],
-  [astarChain.ZKATANA]: [],
+  [astarChain.ZKYOTO]: [],
 };

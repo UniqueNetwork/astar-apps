@@ -1,24 +1,26 @@
+<!-- TODO Remove after Vote.vue is removed -->
+
 <template>
   <div>
     <div class="wrapper--amount">
       <img class="token--logo" alt="token-logo" :src="nativeTokenImg" />
       <span class="text--title">{{ nativeTokenSymbol }}</span>
       <input
-        :value="amount"
         inputmode="decimal"
         type="number"
         min="0"
         pattern="^[0-9]*(\.)?[0-9]*$"
-        placeholder="0.0"
+        placeholder="0"
         class="input--amount input--no-spin"
         @input="handleInputAmount"
+        @wheel="(e) => e.preventDefault()"
       />
     </div>
   </div>
 </template>
 
 <script lang="ts">
-import { defineComponent, computed, ref, PropType } from 'vue';
+import { defineComponent, computed, PropType } from 'vue';
 import { getTokenImage } from 'src/modules/token';
 import { useNetworkInfo } from 'src/hooks';
 

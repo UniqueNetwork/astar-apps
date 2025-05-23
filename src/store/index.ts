@@ -1,15 +1,9 @@
 import { store } from 'quasar/wrappers';
 import { InjectionKey } from 'vue';
 import { createStore, Store as VuexStore, useStore as vuexUseStore } from 'vuex';
-
 import { GeneralStateInterface } from './general/state';
-import { ContractsStateInterface } from './contracts/state';
-import { DappStateInterface } from './dapp-staking/state';
 import { AssetsStateInterface } from './assets/state';
-
 import general from './general';
-import contracts from './contracts';
-import dapps from './dapp-staking';
 import assets from './assets';
 import stakingV3 from '../staking-v3/store';
 import { DappStakingState } from 'src/staking-v3/store/state';
@@ -28,8 +22,6 @@ export interface StateInterface {
   // example: ExampleStateInterface;
   // Declared as unknown to avoid linting issue. Best to strongly type as per the line above.
   general: GeneralStateInterface;
-  contracts: ContractsStateInterface;
-  dapps: DappStateInterface;
   assets: AssetsStateInterface;
   stakingV3: DappStakingState;
 }
@@ -48,8 +40,6 @@ export default store(function (/* { ssrContext } */) {
   const Store = createStore<StateInterface>({
     modules: {
       general,
-      contracts,
-      dapps,
       assets,
       stakingV3,
     },

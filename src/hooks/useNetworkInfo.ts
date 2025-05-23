@@ -7,8 +7,11 @@ import {
 } from 'src/config/chain';
 import { endpointKey, getProviderIndex, providerEndpoints } from 'src/config/chainEndpoints';
 import { polkadotJsUrl } from 'src/links';
+import { CcipNetworkParam } from 'src/modules/ccip-bridge';
+import { getTokenImage } from 'src/modules/token';
+import { buildCcipBridgePageLink } from 'src/router/utils';
 import { useStore } from 'src/store';
-import { computed, watchEffect } from 'vue';
+import { computed } from 'vue';
 
 export function isCustomNetwork(network: string) {
   return network === 'custom-network';
@@ -26,11 +29,20 @@ export function useNetworkInfo() {
 
   const isZkEvm = computed<boolean>(
     () =>
-      currentNetworkIdx.value === endpointKey.ZKATANA ||
+      currentNetworkIdx.value === endpointKey.ZKYOTO ||
       currentNetworkIdx.value === endpointKey.ASTAR_ZKEVM
   );
 
-  const isZkatana = computed<boolean>(() => currentNetworkIdx.value === endpointKey.ZKATANA);
+  const isAstarZkEvm = computed<boolean>(() => currentNetworkIdx.value === endpointKey.ASTAR_ZKEVM);
+  const isAstar = computed<boolean>(() => currentNetworkIdx.value === endpointKey.ASTAR);
+  const isShibuya = computed<boolean>(() => currentNetworkIdx.value === endpointKey.SHIBUYA);
+  const isH160 = computed<boolean>(() => store.getters['general/isH160Formatted']);
+  const isShibuyaEvm = computed<boolean>(() => {
+    return isH160.value && isShibuya.value;
+  });
+  const isAstarEvm = computed<boolean>(() => {
+    return isH160.value && isAstar.value;
+  });
 
   const currentNetworkChain = computed<ASTAR_CHAIN>(() => {
     if (isZkEvm.value) {
@@ -43,7 +55,7 @@ export function useNetworkInfo() {
 
   const currentNetworkIdx = computed<ASTAR_NETWORK_IDX>(() => {
     const networkIdx = store.getters['general/networkIdx'];
-    if (networkIdx === endpointKey.ZKATANA || networkIdx === endpointKey.ASTAR_ZKEVM) {
+    if (networkIdx === endpointKey.ZKYOTO || networkIdx === endpointKey.ASTAR_ZKEVM) {
       return networkIdx;
     }
     const chainInfo = store.getters['general/chainInfo'];
@@ -66,6 +78,15 @@ export function useNetworkInfo() {
       : chain;
   });
 
+  const dappStakingCurrency = computed<string>(() => {
+    // Memo: avoid displaying 'ETH'
+    if (isZkEvm.value) {
+      return isAstarZkEvm.value ? 'ASTR' : 'SBY';
+    } else {
+      return nativeTokenSymbol.value;
+    }
+  });
+
   const currentNetworkName = computed<string>(() => {
     if (isZkEvm.value) {
       return providerEndpoints[currentNetworkIdx.value].displayName.replace(' Network', '');
@@ -82,6 +103,10 @@ export function useNetworkInfo() {
     return chainInfo ? chainInfo.tokenSymbol : '';
   });
 
+  const nativeTokenImg = computed<string>(() =>
+    getTokenImage({ isNativeToken: true, symbol: nativeTokenSymbol.value })
+  );
+
   const isSupportAuTransfer = computed<boolean>(() => {
     return !isMainnet.value && !isZkEvm.value;
   });
@@ -95,6 +120,22 @@ export function useNetworkInfo() {
       : shibuya;
   });
 
+  const ccipSoneiumLink = computed<string>(() => {
+    return buildCcipBridgePageLink(
+      isShibuyaEvm.value
+        ? { from: CcipNetworkParam.ShibuyaEvm, to: CcipNetworkParam.SoneiumMinato }
+        : { from: CcipNetworkParam.AstarEvm, to: CcipNetworkParam.Soneium }
+    );
+  });
+
+  const ccipEthereumLink = computed<string>(() => {
+    return buildCcipBridgePageLink(
+      isShibuyaEvm.value
+        ? { from: CcipNetworkParam.ShibuyaEvm, to: CcipNetworkParam.Sepolia }
+        : { from: CcipNetworkParam.AstarEvm, to: CcipNetworkParam.Ethereum }
+    );
+  });
+
   return {
     isMainnet,
     currentNetworkChain,
@@ -106,6 +147,15 @@ export function useNetworkInfo() {
     polkadotJsLink,
     isZkEvm,
     networkNameSubstrate,
-    isZkatana,
+    isAstarZkEvm,
+    isAstar,
+    dappStakingCurrency,
+    isH160,
+    nativeTokenImg,
+    isShibuya,
+    isShibuyaEvm,
+    isAstarEvm,
+    ccipSoneiumLink,
+    ccipEthereumLink,
   };
 }

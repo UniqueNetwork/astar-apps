@@ -1,12 +1,15 @@
 @import 'src/css/quasar.variables.scss';
 
+.wrapper--dapps {
+}
+
 .container--dapps {
   flex: 1;
-  @media (min-width: $sm) {
-    width: calc(100% - 188px);
-  }
-  @media (min-width: $xl) {
-    width: calc(100% - 288px);
+  height: 368px;
+
+  .swiper--dapps {
+    height: 368px;
+    overflow: visible;
   }
 }
 
@@ -19,13 +22,19 @@
 }
 
 .card--dapp {
-  border: 1px solid $navy-1;
+  background-color: $white;
+  border: 2px solid $white;
   border-radius: 16px;
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   transition: all 0.2s ease;
   overflow: hidden;
+  height: 180px;
+  box-shadow: 0px 4px 8px 0px rgba(0, 0, 0, 0.15);
+
+  &:hover{
+    border-color: $astar-blue;
+  }
 }
 
 .card__top {
@@ -52,13 +61,24 @@
 .text--title {
   font-weight: 700;
   font-size: 16px;
-  margin: 12px 0 4px 0;
+  margin: 0 0 4px 0;
+  line-height: 1.25;
+  overflow: hidden;
+  display: -webkit-box;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
 }
 
 .text--description {
   color: $navy-4;
   font-size: 12px;
   font-weight: 500;
+  overflow: hidden;
+  display: -webkit-box;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .card__bottom {
@@ -67,37 +87,48 @@
   align-items: center;
   padding: 20px 24px;
   gap: 4px;
-  div {
-    padding: 4px 8px;
-    border-radius: 4px;
-    border: solid 1px $gray-2;
-    font-size: 12px;
-    font-weight: 600;
-    color: $gray-3;
+}
+
+.box--dapp-card {
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: solid 1px $gray-2;
+  font-size: 12px;
+  font-weight: 600;
+  color: $gray-3;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 28px;
+  span{
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    .icon--stakers{
+      width: 24px;
+      height: 24px;
+      margin-bottom: -10px;
+    }
+    .icon--astar-logo{
+      width: 18px;
+      height: 18px;
+      margin-right: 4px;
+    }
   }
 }
 
-.wrapper--dapps {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  @media (min-width: $sm) {
-    flex-direction: row;
+.container--category {
+  margin-bottom: 20px;
+
+  @media (min-width: $lg) {
+    margin-bottom: 40px;
   }
 }
 
 .title--category {
-  background-color: $navy-1;
-  color: $gray-1;
-  border-radius: 16px;
-  padding: 24px;
-  font-size: 20px;
-  font-weight: 700;
-  min-height: 180px;
-  min-width: 180px;
-  @media (min-width: $xl) {
-    min-width: 280px;
-  }
+  color: $navy-1;
+  font-size: 32px;
+  font-weight: 800;
 }
 
 .body--dark {

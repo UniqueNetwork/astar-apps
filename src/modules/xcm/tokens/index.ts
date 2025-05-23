@@ -11,6 +11,8 @@ import { ASTAR_DECIMALS } from '@astar-network/astar-sdk-core';
 // Ref: https://wiki.acala.network/get-started/acala-network/acala-account
 // Ref: https://wiki.acala.network/get-started/get-started/karura-account
 
+export const usdtMinFeeAmount = 0.7;
+
 export const xcmToken = {
   [endpointKey.ASTAR]: [
     {
@@ -153,6 +155,56 @@ export const xcmToken = {
       originChain: Chain.BIFROST_POLKADOT,
       minBridgeAmount: '0.1',
     },
+    {
+      symbol: 'PINK',
+      isNativeToken: false,
+      assetId: '18446744073709551633',
+      originAssetId: '23',
+      logo: require('/src/assets/img/token/pink.png'),
+      isXcmCompatible: true,
+      originChain: Chain.ASSET_HUB,
+      minBridgeAmount: '1',
+    },
+    {
+      symbol: 'HDX',
+      isNativeToken: true,
+      assetId: '18446744073709551630',
+      originAssetId: 'HDX',
+      logo: require('/src/assets/img/token/hdx.png'),
+      isXcmCompatible: true,
+      originChain: Chain.HYDRATION,
+      minBridgeAmount: '5',
+    },
+    {
+      symbol: 'xcPEN',
+      isNativeToken: true,
+      assetId: '18446744073709551634',
+      originAssetId: 'PEN',
+      logo: require('/src/assets/img/token/PEN.svg'),
+      isXcmCompatible: true,
+      originChain: Chain.PENDULUM,
+      minBridgeAmount: '2',
+    },
+    {
+      symbol: 'XLM.s',
+      isNativeToken: false,
+      assetId: '18446744073709551635',
+      originAssetId: 'XLM.s',
+      logo: require('/src/assets/img/token/XLM.svg'),
+      isXcmCompatible: true,
+      originChain: Chain.PENDULUM,
+      minBridgeAmount: '1',
+    },
+    {
+      symbol: 'GAME',
+      isNativeToken: false,
+      assetId: '18446744073709551641',
+      originAssetId: '555',
+      logo: require('/src/assets/img/token/game.svg'),
+      isXcmCompatible: true,
+      originChain: Chain.ASSET_HUB,
+      minBridgeAmount: '0.5',
+    },
   ],
   [endpointKey.SHIDEN]: [
     {
@@ -282,7 +334,7 @@ export const xcmToken = {
   [endpointKey.CUSTOM]: [],
   [endpointKey.ROCSTAR]: [],
   [endpointKey.ASTAR_ZKEVM]: [],
-  [endpointKey.ZKATANA]: [],
+  [endpointKey.ZKYOTO]: [],
 };
 
 // Memo: placeholder for assetId of ASTR/SDN/SBY

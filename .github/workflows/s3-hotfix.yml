@@ -1,5 +1,8 @@
 name: Deploy to Release hotfix-S3
 on:
+  push:
+    branches:
+      - release-hotfix
   workflow_dispatch:
     branches:
       - release-hotfix

@@ -103,9 +103,10 @@
                 type="number"
                 min="0"
                 pattern="^[0-9]*(\.)?[0-9]*$"
-                placeholder="0.0"
+                placeholder="0"
                 class="input--amount input--no-spin"
                 @input="inputHandler"
+                @wheel="(e) => e.preventDefault()"
               />
             </div>
           </div>
@@ -165,6 +166,16 @@
             <span class="text--dot">・</span>
             <span class="text--warning">
               {{ $t('assets.modals.xcmWarning.notInputExchanges') }}
+            </span>
+          </div>
+        </div>
+        <div v-if="token.metadata.symbol === 'PINK' && isWithdrawal" class="row--warning">
+          <div class="column--title">
+            <span class="text--dot">・</span>
+            <span class="text--warning">
+              {{
+                $t('assets.modals.xcmWarning.otherTokenAsFee', { amount: '0.7', feeToken: 'USDT' })
+              }}
             </span>
           </div>
         </div>
@@ -254,6 +265,7 @@ export default defineComponent({
       isLoadingApi,
       isInputDestAddrManually,
       isWithdrawalEthChain,
+      isWithdrawal,
       initializeXcmApi,
       inputHandler,
       bridge,
@@ -306,6 +318,7 @@ export default defineComponent({
       isReverseButton,
       isDepositEthChain,
       isWithdrawalEthChain,
+      isWithdrawal,
       setIsMobileDisplayTooltip,
       inputHandler,
       bridge,

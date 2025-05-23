@@ -63,8 +63,6 @@ export default {
     insufficientExistentialDeposit:
       'Saldos da conta na rede {network} está abaixo do valor do depósito existencial',
     withdrawalNotSupport: 'O portal não suporta o saque para {chain} neste momento',
-    ledgerNotOpened:
-      'Ledger não abriu o aplicativo Astar. Por favor, abra-o e atualize esta página.',
   },
   toast: {
     transactionFailed: 'Transação falhou com erro: {message}',
@@ -149,8 +147,8 @@ export default {
   wallet: {
     connectWallet: 'Conectar Carteira',
     select: 'Selecione uma carteira para se conectar ao portal',
-    nativeAccount: 'Contas Nativas',
-    evmAccount: 'Contas EVM',
+    nativeWallets: 'Contas Nativas',
+    evmWallets: 'Contas EVM',
     multisigAccount: 'Contas Multisig',
     accountUnification: 'Conta Unificada',
     math: {
@@ -158,7 +156,6 @@ export default {
       switchNetwork: "Mude sua rede para 'Shiden' na extensão Math Wallet e atualize esta página",
     },
     showBalance: 'Mostrar saldo {token}',
-    isLedgerAccount: 'Essa é uma conta Ledger, conecatada e executando Astar app',
     multisig: {
       initPolkasafe: 'Iniciando PolkaSafe SDK para assinatura; poderá levar um tempo',
       noAccounts: 'Contas multisig não encontradas',
@@ -279,13 +276,6 @@ export default {
       'O número de eras mostrado aqui é por dApp. Você pode precisar clamar várias vezes se tiver muitas eras não clamadas.',
     restakeTip:
       'Ao ativar, suas recompensas serão colocadas em stake automaticamente quando você clamar.',
-    claimable: {
-      limitation: 'Há uma limitação no número de eras que podem ser clamadas em uma transação.',
-      nativeWallets: 'Carteiras nativas: ≒56 eras',
-      ledgerX: 'Ledger Nano X: 6 eras',
-      ledgerSPlus: 'Ledger Nano S Plus: 6 eras',
-      ledgerS: 'Ledger Nano S: 2 eras',
-    },
     dappsOwners: 'DApps owners! We can now help to promote your campaign. Please check',
     dappsOwnersLink: 'the details.',
   },
@@ -429,7 +419,7 @@ export default {
       notEnoughMinAmount: 'A quantidade de token em stake deve ser maior que {amount} {symbol}',
       allFundsWillBeTransferred:
         'Todos os fundos serão transferidos porque o valor min. do stake é {minStakingAmount} {symbol}',
-      invalidBalance: 'Saldo transferível insuficiente para concluir a transação',
+      invalidBalance: 'Você não tem tokens suficientes para pagar a taxa de transação',
       warningLeaveMinAmount:
         'A conta deve conter mais de {amount}{symbol} em valor transferível quando você faz stake.',
     },
@@ -519,8 +509,6 @@ export default {
       notSendToEvmExchanges:
         'NÃO estou enviando tokens para endereços de depósito EVM de Corretora. Entendo que, se fizer isso, os fundos provavelmente serão perdidos.',
       understandWarning: 'Entendo que se o fizer, os fundos provavelmente serão perdidos',
-      notDestIsLedgerAccount:
-        'O endereço de destino não é uma conta Ledger nativa nem um endereço de Corretora. Entendo que se eu fizer isso, os fundos provavelmente serão perdidos.',
       notDestIsExchangeAddress: 'Endereço de destino não é um endereço de Corretora',
       youWillReceive: 'Você receberá',
       faucetNextRequest: 'Tempo restante até a próxima solicitação',
@@ -684,15 +672,15 @@ export default {
       title: 'Ponte Ethereum',
       text: 'Ponte de ativos entre {l1} e {l2}',
       text2:
-        'Disponível na testnet! - Para experimentar, conecte sua carteira ao Astar zKatana (zkEVM testnet) e obtenha testnet ETH',
-      lean: '(saiba mais)',
+        'Disponível na testnet! - Para experimentar, conecte sua carteira ao Astar zKyoto (zkEVM testnet) e obtenha testnet ETH',
+      learn: '(saiba mais)',
     },
     astarBridge: {
       title: 'Astar Bridge',
       text: 'Faça ponte de token ASTR e ativos para {l2} de {substrateNetwork} EVM',
       text2: 'Atualmente em desenvolvimento',
     },
-    celetBridge: {
+    celerBridge: {
       title: 'Celer Bridge',
       text: 'Fala ponte de ativo para {cbridgeNetworkName} Polkadot EVM via Celer Bridge',
     },

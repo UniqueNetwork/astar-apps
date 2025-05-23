@@ -1,12 +1,19 @@
 import { inject, injectable } from 'inversify';
 import { IDappStakingService } from './IDappStakingService';
 import { DappStakingService } from './DappStakingService';
-import { DappStakeInfo, SingularStakingInfo } from '../models';
+import { BonusRewards, DappStakeInfo, SingularStakingInfo, StakerRewards } from '../models';
 import { IWalletService } from '../../../v2/services/IWalletService';
-import { IDappStakingRepository } from '../repositories';
+import { IDappStakingRepository, IDataProviderRepository } from '../repositories';
 import { Symbols } from 'src/v2/symbols';
 import { evmPrecompiledContract } from 'src/modules/precompiled';
-import { IAccountUnificationRepository } from 'src/v2/repositories';
+import {
+  IAccountUnificationRepository,
+  IBalancesRepository,
+  IInflationRepository,
+  IMetadataRepository,
+  ISystemRepository,
+  ITokenApiRepository,
+} from 'src/v2/repositories';
 import { Guard } from 'src/v2/common';
 
 const { dispatch } = evmPrecompiledContract;
@@ -17,11 +24,26 @@ export class DappStakingServiceEvm extends DappStakingService implements IDappSt
 
   constructor(
     @inject(Symbols.DappStakingRepositoryV3) dappStakingRepository: IDappStakingRepository,
+    @inject(Symbols.TokenApiProviderRepository) tokenApiRepository: IDataProviderRepository,
     @inject(Symbols.WalletFactory) walletFactory: () => IWalletService,
     @inject(Symbols.AccountUnificationRepository)
-    private accountUnificationRepository: IAccountUnificationRepository
+    private accountUnificationRepository: IAccountUnificationRepository,
+    @inject(Symbols.MetadataRepository) metadataRepository: IMetadataRepository,
+    @inject(Symbols.TokenApiRepository) priceRepository: ITokenApiRepository,
+    @inject(Symbols.BalancesRepository) protected balancesRepository: IBalancesRepository,
+    @inject(Symbols.InflationRepository) protected inflationRepository: IInflationRepository,
+    @inject(Symbols.SystemRepository) protected systemRepository: ISystemRepository
   ) {
-    super(dappStakingRepository, walletFactory);
+    super(
+      dappStakingRepository,
+      tokenApiRepository,
+      walletFactory,
+      metadataRepository,
+      priceRepository,
+      balancesRepository,
+      inflationRepository,
+      systemRepository
+    );
     this.wallet = walletFactory();
   }
 
@@ -184,6 +206,26 @@ export class DappStakingServiceEvm extends DappStakingService implements IDappSt
   }
 
   // @inheritdoc
+  public async claimAndMoveStake(
+    senderAddress: string,
+    moveFromAddress: string,
+    stakeInfo: DappStakeInfo[],
+    successMessage: string
+  ): Promise<void> {
+    this.guardStake(senderAddress, stakeInfo, moveFromAddress, BigInt(0));
+    const ss58Address = await this.getSS58Address(senderAddress);
+    const batch = await this.getClaimAndMoveStakeBatch(ss58Address, moveFromAddress, stakeInfo);
+
+    await this.wallet.sendEvmTransaction({
+      from: senderAddress,
+      to: dispatch,
+      data: batch.method.toHex(),
+      successMessage,
+      failureMessage: 'Call failed',
+    });
+  }
+
+  // @inheritdoc
   public async claimUnlockedTokens(senderAddress: string, successMessage: string): Promise<void> {
     Guard.ThrowIfUndefined('senderAddress', senderAddress);
 
@@ -220,13 +262,13 @@ export class DappStakingServiceEvm extends DappStakingService implements IDappSt
     return await super.getStakerInfo(ss58Address, includePreviousPeriods);
   }
 
-  public async getStakerRewards(senderAddress: string): Promise<bigint> {
+  public async getStakerRewards(senderAddress: string): Promise<StakerRewards> {
     const ss58Address = await this.getSS58Address(senderAddress);
 
     return await super.getStakerRewards(ss58Address);
   }
 
-  public async getBonusRewards(senderAddress: string): Promise<bigint> {
+  public async getBonusRewards(senderAddress: string): Promise<BonusRewards> {
     const ss58Address = await this.getSS58Address(senderAddress);
 
     return await super.getBonusRewards(ss58Address);

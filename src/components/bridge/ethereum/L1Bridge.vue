@@ -23,7 +23,7 @@
           </div>
         </div>
       </div>
-      <div class="row--reverse">
+      <div v-if="isEnabledWithdrawal" class="row--reverse">
         <button
           class="icon--reverse cursor-pointer"
           @click="() => reverseChain(fromChainName, toChainName)"
@@ -31,7 +31,17 @@
           <astar-icon-sync size="20" />
         </button>
       </div>
-      <div class="box--input-field">
+      <div v-else class="row--reverse">
+        <button class="icon--reverse" disabled>
+          <astar-icon-sync size="20" />
+        </button>
+        <q-tooltip>
+          <span class="text--tooltip">
+            {{ $t('bridge.disabledWithdrawal', { network: fromChainName }) }}
+          </span>
+        </q-tooltip>
+      </div>
+      <div class="box--input-field row--reverse-bottom">
         <div class="box__space-between">
           <span> {{ $t('to') }}</span>
           <div>
@@ -96,9 +106,10 @@
               type="number"
               min="0"
               pattern="^[0-9]*(\.)?[0-9]*$"
-              placeholder="0.0"
+              placeholder="0"
               class="input--amount input--no-spin"
               @input="(e) => inputHandler(e)"
+              @wheel="(e) => e.preventDefault()"
             />
           </div>
         </div>
@@ -122,6 +133,15 @@
 
       <div v-if="errMsg && currentAccount" class="row--box-error">
         <span class="color--white"> {{ $t(errMsg) }}</span>
+      </div>
+
+      <div v-if="isWarningHighTraffic" class="row--box-error">
+        <span class="color--white">
+          {{ $t('bridge.warningHighTraffic') }}
+          <a class="color--white text-underline" @click="setHighTrafficModalOpen(true)">
+            {{ $t('bridge.warningHighTrafficMore') }}
+          </a>
+        </span>
       </div>
 
       <div class="container--warning">
@@ -148,12 +168,20 @@
         </astar-button>
       </div>
     </div>
+
+    <modal-bridge-high-traffic
+      v-if="isHighTrafficModalOpen"
+      :set-is-open="setHighTrafficModalOpen"
+      :show="isHighTrafficModalOpen"
+    />
   </div>
 </template>
+
 <script lang="ts">
 import { wait } from '@astar-network/astar-sdk-core';
 import { isHex } from '@polkadot/util';
 import TokenBalance from 'src/components/common/TokenBalance.vue';
+import ModalBridgeHighTraffic from 'src/components/common/ModalBridgeHighTraffic.vue';
 import { useAccount } from 'src/hooks';
 import { EthBridgeNetworkName, ZkToken, zkBridgeIcon } from 'src/modules/zk-evm-bridge';
 import { useStore } from 'src/store';
@@ -164,6 +192,7 @@ export default defineComponent({
   components: {
     TokenBalance,
     [Jazzicon.name]: Jazzicon,
+    ModalBridgeHighTraffic,
   },
   props: {
     fetchUserHistory: {
@@ -248,6 +277,13 @@ export default defineComponent({
     const store = useStore();
     const isHandling = ref<boolean>(false);
     const isLoading = computed<boolean>(() => store.getters['general/isLoading']);
+    const isEnabledWithdrawal = computed<boolean>(() => false);
+    const isHighTrafficModalOpen = ref<boolean>(false);
+    const isWarningHighTraffic = computed<boolean>(() => false);
+
+    const setHighTrafficModalOpen = (value: boolean): void => {
+      isHighTrafficModalOpen.value = value;
+    };
 
     const bridge = async (): Promise<void> => {
       isHandling.value = true;
@@ -275,16 +311,15 @@ export default defineComponent({
       isHandling.value = false;
     };
 
-    // Watching the 'isApproved' prop
-    // When 'isApproved' changes and becomes true, stop loading animation
     watch(
-      () => props.isApproved,
-      async (newVal, oldVal) => {
-        if (newVal === true) {
+      [props],
+      () => {
+        if (props.isApproved) {
           props.setIsApproving(false);
           store.commit('general/setLoading', false, { root: true });
         }
-      }
+      },
+      { immediate: false }
     );
 
     return {
@@ -293,8 +328,12 @@ export default defineComponent({
       EthBridgeNetworkName,
       isHandling,
       isLoading,
+      isEnabledWithdrawal,
       bridge,
       approve,
+      isHighTrafficModalOpen,
+      setHighTrafficModalOpen,
+      isWarningHighTraffic,
     };
   },
 });

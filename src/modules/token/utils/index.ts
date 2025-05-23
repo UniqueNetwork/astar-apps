@@ -6,24 +6,19 @@ import { Erc20Token, registeredErc20Tokens, tokenImageMap } from 'src/modules/to
 import { xcmToken } from 'src/modules/xcm';
 import { Asset } from 'src/v2/models';
 import { hasProperty } from '@astar-network/astar-sdk-core';
+import { vastrBridgeLink } from 'src/links';
 
 export const getTokenImage = ({
   isNativeToken,
   symbol,
   iconUrl,
-  isZkEvm,
 }: {
   isNativeToken: boolean;
   symbol: string;
   iconUrl?: string;
-  isZkEvm?: boolean;
 }): string => {
   if (isNativeToken) {
-    return isZkEvm
-      ? require('assets/img/ethereum.png')
-      : symbol === 'SDN'
-      ? 'icons/sdn-token.png'
-      : 'icons/astar.png';
+    return symbol === 'SDN' ? 'icons/sdn-token.png' : 'icons/astar.png';
   } else {
     return iconUrl || 'custom-token';
   }
@@ -154,7 +149,7 @@ export const castCbridgeToErc20 = ({
     image: token.icon,
     isWrappedToken: false,
     isXC20: false,
-    wrapUrl: null,
+    bridgeUrl: null,
     userBalance: token.userBalance,
     userBalanceUsd: token.userBalanceUsd,
     isCbridgeToken: true,
@@ -171,6 +166,11 @@ export const getRegisteredErc20Tokens = ({
   const xc20Tokens = xcmToken[network].map((it) => {
     try {
       const asset = assets.find((that) => that.id === it.assetId) as Asset;
+      let bridgeUrl = null;
+      if (it.symbol === 'vASTR') {
+        bridgeUrl = vastrBridgeLink;
+      }
+
       return {
         srcChainId: Number(providerEndpoints[network].evmChainId),
         address: asset.mappedERC20Addr,
@@ -180,7 +180,7 @@ export const getRegisteredErc20Tokens = ({
         image: it.logo,
         isWrappedToken: false,
         isXC20: true,
-        wrapUrl: null,
+        bridgeUrl,
       };
     } catch (error) {
       console.error(error);

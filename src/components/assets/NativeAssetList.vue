@@ -22,6 +22,14 @@
           <div v-else class="skeleton--right">
             <q-skeleton animation="fade" class="skeleton--md" />
           </div>
+          <div class="column--balance-usd text--label">
+            <span>
+              {{ $n(truncate(Number(balUsd), 3)) }}
+            </span>
+            <span>
+              {{ $t('usd') }}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -121,7 +129,7 @@
             </div>
             <div v-if="!isSkeleton" class="column--balance">
               <div class="column--amount text--amount">
-                {{ $n(truncate(lockInDappStaking + vestingTtl + reservedTtl, 3)) }}
+                {{ $n(truncate(lockedAmount, 3)) }}
               </div>
               <div class="column--symbol text--symbol">
                 {{ nativeTokenSymbol }}
@@ -165,6 +173,21 @@
                     </div>
                     <div class="column--symbol text--symbol">
                       {{ nativeTokenSymbol }}
+                    </div>
+                    <div v-if="vestingTtl > 0" class="row--vesting-note">
+                      <span>
+                        {{
+                          $t('assets.vestingInStake', {
+                            amount: $n(
+                              truncate(
+                                vestingTtl > lockInDappStaking ? lockInDappStaking : vestingTtl,
+                                3
+                              )
+                            ),
+                            token: nativeTokenSymbol,
+                          })
+                        }}
+                      </span>
                     </div>
                   </template>
                   <template v-else>
@@ -229,6 +252,28 @@
                 </router-link>
               </div>
             </div>
+
+            <!-- Governance -->
+            <div class="row--expand">
+              <div class="row--expand__info">
+                <div class="column--label text--label">{{ $t('governance.governance') }}</div>
+                <div class="column--balance">
+                  <template v-if="!isSkeleton">
+                    <div class="column--amount text--amount">
+                      {{ $n(truncate(lockInDemocracy, 3)) }}
+                    </div>
+                    <div class="column--symbol text--symbol">
+                      {{ nativeTokenSymbol }}
+                    </div>
+                  </template>
+                  <template v-else>
+                    <div class="skeleton--right">
+                      <q-skeleton animation="fade" class="skeleton--md" />
+                    </div>
+                  </template>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -249,27 +294,20 @@
   </div>
 </template>
 <script lang="ts">
+import { checkIsNullOrUndefined, truncate } from '@astar-network/astar-sdk-core';
 import { u8aToString } from '@polkadot/util';
 import { ethers } from 'ethers';
-import {
-  useBalance,
-  useBalloons,
-  useEvmDeposit,
-  useNetworkInfo,
-  usePrice,
-  useBreakpoints,
-  useFaucet,
-} from 'src/hooks';
-import { checkIsNullOrUndefined, truncate } from '@astar-network/astar-sdk-core';
-import { getTokenImage } from 'src/modules/token';
-import { generateAstarNativeTokenObject } from 'src/modules/xcm/tokens';
-import { useStore } from 'src/store';
-import { computed, defineComponent, ref, watchEffect, watch } from 'vue';
-import { buildTransferPageLink } from 'src/router/routes';
 import ModalEvmWithdraw from 'src/components/assets/modals/ModalEvmWithdraw.vue';
 import ModalFaucet from 'src/components/assets/modals/ModalFaucet.vue';
 import ModalVesting from 'src/components/assets/modals/ModalVesting.vue';
+import { useBalance, useBreakpoints, useEvmDeposit, useFaucet, useNetworkInfo } from 'src/hooks';
+import { getTokenImage } from 'src/modules/token';
+import { generateAstarNativeTokenObject } from 'src/modules/xcm/tokens';
 import { Path } from 'src/router';
+import { buildTransferPageLink } from 'src/router/routes';
+import { useDappStaking } from 'src/staking-v3';
+import { useStore } from 'src/store';
+import { computed, defineComponent, ref, watch, watchEffect } from 'vue';
 
 export default defineComponent({
   components: {
@@ -277,7 +315,14 @@ export default defineComponent({
     ModalEvmWithdraw,
     ModalVesting,
   },
-  setup() {
+  props: {
+    nativeTokenUsd: {
+      type: Number,
+      required: false,
+      default: 0,
+    },
+  },
+  setup(props) {
     const isModalTransfer = ref<boolean>(false);
     const isModalFaucet = ref<boolean>(false);
     const isModalEvmWithdraw = ref<boolean>(false);
@@ -287,21 +332,21 @@ export default defineComponent({
     const vestingTtl = ref<number>(0);
     const reservedTtl = ref<number>(0);
     const lockInDappStaking = ref<number>(0);
+    const lockInDemocracy = ref<number>(0);
     const isRocstar = ref<boolean>(false);
     const isShibuya = ref<boolean>(false);
     const isFaucet = ref<boolean>(false);
     const isExpand = ref<boolean>(false);
-    const { isBalloonNativeToken, isBalloonNativeTokenClosing, handleCloseNativeTokenBalloon } =
-      useBalloons();
 
     const store = useStore();
     const isLoading = computed<boolean>(() => store.getters['general/isLoading']);
     const selectedAddress = computed(() => store.getters['general/selectedAddress']);
-    const { balance, accountData, isLoadingBalance } = useBalance(selectedAddress);
+    const { balance, accountData, isLoadingBalance, lockedInDemocracy } =
+      useBalance(selectedAddress);
     const { numEvmDeposit } = useEvmDeposit();
-    const { nativeTokenUsd } = usePrice();
     const { currentNetworkName, nativeTokenSymbol, isSupportAuTransfer } = useNetworkInfo();
     const { faucetBalRequirement } = useFaucet();
+    const { isDappStakingV3, ledger } = useDappStaking();
     const xcmNativeToken = computed(() => generateAstarNativeTokenObject(nativeTokenSymbol.value));
 
     const nativeTokenImg = computed(() =>
@@ -338,8 +383,8 @@ export default defineComponent({
         isFaucet.value = isRocstar.value
           ? false
           : isShibuya.value || faucetBalRequirement.value > bal.value;
-        if (nativeTokenUsd.value) {
-          balUsd.value = nativeTokenUsd.value * bal.value;
+        if (props.nativeTokenUsd) {
+          balUsd.value = props.nativeTokenUsd * bal.value;
         } else {
           balUsd.value = 0;
         }
@@ -348,7 +393,11 @@ export default defineComponent({
       }
     };
 
-    watch([nativeTokenSymbol, balance], setBalanceData, { immediate: false });
+    const lockedAmount = computed<number>(() =>
+      Math.max(vestingTtl.value, lockInDappStaking.value, lockInDemocracy.value, reservedTtl.value)
+    );
+
+    watch([nativeTokenSymbol, balance, props], setBalanceData, { immediate: false });
 
     watchEffect(() => {
       const accountDataRef = accountData.value;
@@ -357,26 +406,33 @@ export default defineComponent({
       const vesting = accountDataRef.locks.find((it) => u8aToString(it.id) === 'vesting ');
       const dappStake = accountDataRef.locks.find((it) => u8aToString(it.id) === 'dapstake');
       const reserved = accountDataRef.reserved;
+
       if (vesting) {
         const amount = String(vesting.amount);
         vestingTtl.value = Number(ethers.utils.formatEther(amount));
       }
+
       if (dappStake) {
         const amount = String(dappStake.amount);
         lockInDappStaking.value = Number(ethers.utils.formatEther(amount));
+      } else if (isDappStakingV3.value && ledger.value) {
+        lockInDappStaking.value = Number(ethers.utils.formatEther(ledger.value.locked));
       }
 
       if (reserved) {
         const amount = reserved.toString();
         reservedTtl.value = Number(ethers.utils.formatEther(amount));
       }
+
+      if (lockedInDemocracy.value) {
+        lockInDemocracy.value = Number(
+          ethers.utils.formatEther(lockedInDemocracy.value.toString())
+        );
+      }
     });
 
     // Ref: https://stackoverflow.com/questions/48143381/css-expand-contract-animation-to-show-hide-content
     const expandAsset = async (isOpen: boolean): Promise<void> => {
-      if (isBalloonNativeToken.value) {
-        await handleCloseNativeTokenBalloon();
-      }
       isExpand.value = !isOpen;
       const el = document.getElementById(isOpen ? 'asset-expand' : 'asset-expand-close');
       el && el.classList.toggle('asset-expanded');
@@ -394,6 +450,7 @@ export default defineComponent({
       isShibuya,
       vestingTtl,
       lockInDappStaking,
+      lockInDemocracy,
       isFaucet,
       transferableBalance,
       isModalTransfer,
@@ -408,8 +465,6 @@ export default defineComponent({
       isSkeleton,
       isSupportAuTransfer,
       isExpand,
-      isBalloonNativeToken,
-      isBalloonNativeTokenClosing,
       width,
       screenSize,
       reservedTtl,
@@ -419,7 +474,7 @@ export default defineComponent({
       handleModalFaucet,
       handleModalEvmWithdraw,
       expandAsset,
-      handleCloseNativeTokenBalloon,
+      lockedAmount,
     };
   },
 });

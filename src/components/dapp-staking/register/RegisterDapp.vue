@@ -1,7 +1,7 @@
 <template>
   <div class="container--register">
-    <back-to-page :text="$t('dappStaking.stakePage.backToDappList')" :link="Path.DappStaking" />
     <div class="wrapper--register-form">
+      <back-to-page :text="$t('dappStaking.stakePage.backToDappList')" :link="Path.DappStaking" />
       <welcome-banner v-if="isNewDapp && !isMobileDevice" />
       <desktop-only-banner v-if="isMobileDevice" />
       <q-form v-if="!isMobileDevice" ref="dappForm">
@@ -68,7 +68,6 @@
           <contract-types :dapp="data" class="custom-component" />
           <main-category :dapp="data" class="custom-component" />
           <tags :dapp="data" class="component" />
-          <license :dapp="data" class="component" />
           <div class="button--container">
             <!-- <astar-button class="button--submit" @click="handleSubmit">
               {{ $t('dappStaking.modals.submit') }}
@@ -105,8 +104,7 @@
 <script lang="ts">
 import { computed, defineComponent, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { $api } from 'boot/api';
-import { FileInfo, NewDappItem } from 'src/store/dapp-staking/state';
+import { EditDappItem, FileInfo, IDappStakingRepository, NewDappItem } from 'src/staking-v3';
 import { Category, Developer } from '@astar-network/astar-sdk-core';
 import ImageCard from './components/ImageCard.vue';
 import AddItemCard from './components/AddItemCard.vue';
@@ -117,25 +115,22 @@ import Description from './components/Description.vue';
 import WelcomeBanner from './components/WelcomeBanner.vue';
 import ContractTypes, { possibleContractTypes } from './components/ContractTypes.vue';
 import MainCategory, { possibleCategories } from './components/MainCategory.vue';
-import License from './components/License.vue';
 import Tags from './components/Tags.vue';
-import { possibleLicenses } from './components/License.vue';
 import { isUrlValid } from 'src/components/common/Validators';
 import { sanitizeData } from 'src/hooks/helper/markdown';
 import { LabelValuePair } from './components/ItemsToggle.vue';
 import { container } from 'src/v2/common';
-import { IDappStakingService } from 'src/v2/services';
+import { IDappStakingService } from 'src/staking-v3/logic/services';
 import { Symbols } from 'src/v2/symbols';
 import { useStore } from 'src/store';
-import { useCustomSignature, useGasPrice, useNetworkInfo, useSignPayload } from 'src/hooks';
-import { useExtrinsicCall } from 'src/hooks/custom-signature/useExtrinsicCall';
-import { RegisterParameters } from 'src/store/dapp-staking/actions';
+import { useGasPrice, useNetworkInfo, useSignPayload } from 'src/hooks';
 import { Path } from 'src/router';
 import BackToPage from 'src/components/common/BackToPage.vue';
 import { useRouter } from 'vue-router';
 import { isMobileDevice } from 'src/hooks/helper/wallet';
 import DesktopOnlyBanner from './components/DesktopOnlyBanner.vue';
 import ModalAddIntroduction from './components/ModalAddIntroduction.vue';
+import { useDapps } from 'src/staking-v3';
 
 export default defineComponent({
   components: {
@@ -147,7 +142,6 @@ export default defineComponent({
     Description,
     ContractTypes,
     MainCategory,
-    License,
     Tags,
     BackToPage,
     WelcomeBanner,
@@ -164,15 +158,13 @@ export default defineComponent({
     });
 
     const { t } = useI18n();
+    const { registerDapp } = useDapps();
     const { signPayload } = useSignPayload();
     const { selectedTip } = useGasPrice();
-    const { isCustomSig } = useCustomSignature({});
-    const { getCallFunc } = useExtrinsicCall({ onResult: () => {}, onTransactionError: () => {} });
     const { currentNetworkName } = useNetworkInfo();
     const store = useStore();
     const isH160 = computed<boolean>(() => store.getters['general/isH160Formatted']);
     const currentAddress = computed(() => store.getters['general/selectedAddress']);
-    const substrateAccounts = computed(() => store.getters['general/substrateAccounts']);
     const data = reactive<NewDappItem>({ tags: [] } as unknown as NewDappItem);
     const isModalAddDeveloper = ref<boolean>(false);
     const currentDeveloper = ref<Developer>(initDeveloper());
@@ -192,7 +184,6 @@ export default defineComponent({
     data.communities = [];
     data.tags = [];
     data.mainCategory = currentCategory.value.value as Category;
-    data.license = possibleLicenses[0].value;
     data.iconFile = '';
 
     data.images = [];
@@ -245,18 +236,20 @@ export default defineComponent({
     const getDapp = async (): Promise<void> => {
       try {
         store.commit('general/setLoading', true);
-        const service = container.get<IDappStakingService>(Symbols.DappStakingService);
+        const service = container.get<IDappStakingService>(Symbols.DappStakingServiceV3);
+        const repository = container.get<IDappStakingRepository>(Symbols.DappStakingRepositoryV3);
         const developerContract =
           currentAddress.value &&
           !isH160.value &&
           (await service.getRegisteredContract(currentAddress.value));
         data.address = developerContract ?? '';
         if (data.address && currentNetworkName.value) {
-          const registeredDapp = await service.getDapp(
-            data.address,
+          const registeredDapp = (await repository.getDapp(
             currentNetworkName.value,
+            data.address,
             true
-          );
+          )) as unknown as EditDappItem;
+          console.log('registeredDapp', registeredDapp);
           isNewDapp.value = !registeredDapp;
           if (registeredDapp && !registeredDapp.tags) {
             registeredDapp.tags = [];
@@ -293,7 +286,7 @@ export default defineComponent({
             data.contractType = registeredDapp.contractType ?? possibleContractTypes[2].value; // default to evm
             data.mainCategory =
               registeredDapp.mainCategory ?? (currentCategory.value.value as Category);
-            data.license = registeredDapp.license;
+            data.license = '';
             data.tags = registeredDapp.tags;
           }
         } else {
@@ -318,21 +311,15 @@ export default defineComponent({
           });
 
           const signature = await signPayload(senderAddress, data.address);
-          const result = await store.dispatch('dapps/registerDappApi', {
+          const result = await registerDapp({
             dapp: data,
-            api: $api,
             senderAddress,
-            substrateAccounts: substrateAccounts.value,
-            tip: selectedTip.value.price,
             network: currentNetwork.value,
-            isCustomSignature: isCustomSig.value,
-            getCallFunc,
             signature,
-          } as RegisterParameters);
+          });
 
           if (result) {
             await router.push(Path.DappStaking);
-            router.go(0);
           }
         }
       });
@@ -352,7 +339,11 @@ export default defineComponent({
     const handleModalAddIntroduction = ({ isOpen }: { isOpen: boolean }): void => {
       dappForm?.value?.validate().then(async (success: boolean) => {
         if (success && validateCustomComponents()) {
-          isModalAddIntroduction.value = isOpen;
+          if (isNewDapp.value) {
+            isModalAddIntroduction.value = isOpen;
+          } else {
+            handleSubmit();
+          }
         }
       });
     };
@@ -426,7 +417,7 @@ export default defineComponent({
 
 <style lang="scss">
 .q-field__native {
-  color: $gray-1 !important;
+  color: $gray-5 !important;
 }
 .body--dark {
   .q-field__native {

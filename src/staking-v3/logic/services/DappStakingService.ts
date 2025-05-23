@@ -1,45 +1,109 @@
 import { inject, injectable } from 'inversify';
-import { CombinedDappInfo, DappStakeInfo, SingularStakingInfo, StakeAmount } from '../models';
+import {
+  BonusRewards,
+  CombinedDappInfo,
+  DappInfo,
+  DappStakeInfo,
+  DappState,
+  EraInfo,
+  EraLengths,
+  PeriodType,
+  ProtocolState,
+  SingularStakingInfo,
+  StakeAmount,
+  StakerRewards,
+} from '../models';
 import { IDappStakingService } from './IDappStakingService';
 import { Symbols } from 'src/v2/symbols';
-import { IDappStakingRepository } from '../repositories';
+import { IDappStakingRepository, IDataProviderRepository } from '../repositories';
 import { Guard } from 'src/v2/common';
 import { IWalletService } from 'src/v2/services';
 import { ExtrinsicPayload } from '@astar-network/astar-sdk-core';
 import { ethers } from 'ethers';
+import { SignerService } from './SignerService';
+import { TvlModel } from 'src/v2/models';
+import { ASTAR_NATIVE_TOKEN, astarMainnetNativeToken } from 'src/config/chain';
+import {
+  IBalancesRepository,
+  IInflationRepository,
+  IMetadataRepository,
+  ISystemRepository,
+  ITokenApiRepository,
+} from 'src/v2/repositories';
+import { weiToToken } from 'src/token-utils';
 
 @injectable()
-export class DappStakingService implements IDappStakingService {
+export class DappStakingService extends SignerService implements IDappStakingService {
   constructor(
     @inject(Symbols.DappStakingRepositoryV3)
     protected dappStakingRepository: IDappStakingRepository,
-    @inject(Symbols.WalletFactory) private walletFactory: () => IWalletService
-  ) {}
+    @inject(Symbols.TokenApiProviderRepository)
+    protected tokenApiRepository: IDataProviderRepository,
+    @inject(Symbols.WalletFactory) walletFactory: () => IWalletService,
+    @inject(Symbols.MetadataRepository) protected metadataRepository: IMetadataRepository,
+    @inject(Symbols.TokenApiRepository) protected priceRepository: ITokenApiRepository,
+    @inject(Symbols.BalancesRepository) protected balancesRepository: IBalancesRepository,
+    @inject(Symbols.InflationRepository) protected inflationRepository: IInflationRepository,
+    @inject(Symbols.SystemRepository) protected systemRepository: ISystemRepository
+  ) {
+    super(walletFactory);
+  }
 
   // @inheritdoc
-  public async getDapps(network: string): Promise<CombinedDappInfo[]> {
-    Guard.ThrowIfUndefined(network, 'network');
+  public async getDapps(
+    network: string
+  ): Promise<{ fullInfo: CombinedDappInfo[]; chainInfo: DappInfo[] }> {
+    Guard.ThrowIfUndefined('network', network);
 
-    const [storeDapps, chainDapps] = await Promise.all([
+    const [storeDapps, chainDapps, tokenApiDapps] = await Promise.all([
       this.dappStakingRepository.getDapps(network.toLowerCase()),
       this.dappStakingRepository.getChainDapps(),
+      this.tokenApiRepository.getDapps(network.toLowerCase()),
     ]);
 
-    // Map on chain and in store dApps
+    // Map on chain and in store dApps (registered only)
     const dApps: CombinedDappInfo[] = [];
+    const onlyChain: DappInfo[] = [];
     chainDapps.forEach((chainDapp) => {
       const storeDapp = storeDapps.find(
         (x) => x.address.toLowerCase() === chainDapp.address.toLowerCase()
+      );
+      const dappDetails = tokenApiDapps.find(
+        (x) => x.contractAddress.toLowerCase() === chainDapp.address.toLowerCase()
       );
       if (storeDapp) {
         dApps.push({
           basic: storeDapp,
           chain: chainDapp,
+          dappDetails,
         });
+      } else {
+        onlyChain.push(chainDapp);
       }
     });
 
-    return dApps;
+    // Map unregistered dApps
+    tokenApiDapps
+      .filter((x) => x.state === 'Unregistered')
+      .forEach((dapp) => {
+        const storeDapp = storeDapps.find(
+          (x) => x.address.toLowerCase() === dapp.contractAddress.toLowerCase()
+        );
+        if (storeDapp) {
+          dApps.push({
+            basic: storeDapp,
+            dappDetails: dapp,
+            chain: {
+              address: dapp.contractAddress,
+              id: dapp.dappId,
+              owner: dapp.owner,
+              state: DappState.Unregistered,
+            },
+          });
+        }
+      });
+
+    return { fullInfo: dApps, chainInfo: onlyChain };
   }
 
   // @inheritdoc
@@ -151,11 +215,10 @@ export class DappStakingService implements IDappStakingService {
   }
 
   // @inheritdoc
-  public async getStakerRewards(senderAddress: string): Promise<bigint> {
+  public async getStakerRewards(senderAddress: string): Promise<StakerRewards> {
     Guard.ThrowIfUndefined(senderAddress, 'senderAddress');
 
     const ledger = await this.dappStakingRepository.getAccountLedger(senderAddress);
-    let result = BigInt(0);
 
     // *** 1. Determine last claimable era.
     const {
@@ -165,7 +228,14 @@ export class DappStakingService implements IDappStakingService {
       lastSpanIndex,
       rewardsExpired,
       eraRewardSpanLength,
+      lastStakedPeriod,
     } = await this.getStakerEraRange(senderAddress);
+
+    let result = {
+      amount: BigInt(0),
+      period: lastStakedPeriod,
+      eraCount: 0,
+    };
 
     if (rewardsExpired) {
       return result;
@@ -176,15 +246,19 @@ export class DappStakingService implements IDappStakingService {
     for (let era = firstStakedEra; era <= lastStakedEra; era++) {
       let stakedSum = BigInt(0);
 
-      if (ledger.staked.era <= era) {
+      if (ledger.staked.era <= era && !ledger.stakedFuture) {
         stakedSum += ledger.staked.totalStake;
-      }
-      if (ledger.stakedFuture && ledger.stakedFuture.era <= era) {
-        stakedSum += ledger.stakedFuture.totalStake;
+      } else if (ledger.stakedFuture) {
+        if (ledger.stakedFuture.era <= era) {
+          stakedSum += ledger.stakedFuture.totalStake;
+        } else if (ledger.staked.era <= era) {
+          stakedSum += ledger.staked.totalStake;
+        }
       }
 
       claimableEras.set(era, stakedSum);
     }
+    result.eraCount = claimableEras.size;
 
     // *** 3. Calculate rewards.
     for (
@@ -201,7 +275,8 @@ export class DappStakingService implements IDappStakingService {
         const staked = claimableEras.get(era);
         if (staked) {
           const eraIndex = era - span.firstEra;
-          result += (staked * span.span[eraIndex].stakerRewardPool) / span.span[eraIndex].staked;
+          result.amount +=
+            (staked * span.span[eraIndex].stakerRewardPool) / span.span[eraIndex].staked;
         }
       }
     }
@@ -251,10 +326,10 @@ export class DappStakingService implements IDappStakingService {
   }
 
   // @inheritdoc
-  public async getBonusRewards(senderAddress: string): Promise<bigint> {
+  public async getBonusRewards(senderAddress: string): Promise<BonusRewards> {
     const result = await this.getBonusRewardsAndContractsToClaim(senderAddress);
 
-    return result.rewards;
+    return result;
   }
 
   public async claimBonusRewards(senderAddress: string, successMessage: string): Promise<void> {
@@ -306,11 +381,13 @@ export class DappStakingService implements IDappStakingService {
   ): Promise<ExtrinsicPayload[] | undefined> {
     const result = await this.getBonusRewardsAndContractsToClaim(senderAddress);
 
-    if (result.contractsToClaim.length === 0) {
+    if (result.contractsToClaim.size === 0) {
       return undefined;
     }
 
-    return await this.dappStakingRepository.getClaimBonusRewardsCalls(result.contractsToClaim);
+    return await this.dappStakingRepository.getClaimBonusRewardsCalls([
+      ...result.contractsToClaim.keys(),
+    ]);
   }
 
   // @inheritdoc
@@ -332,6 +409,18 @@ export class DappStakingService implements IDappStakingService {
       unstakeAmount
     );
 
+    await this.signCall(batch, senderAddress, successMessage);
+  }
+
+  // @inheritdoc
+  public async claimAndMoveStake(
+    senderAddress: string,
+    moveFromAddress: string,
+    stakeInfo: DappStakeInfo[],
+    successMessage: string
+  ): Promise<void> {
+    this.guardStake(senderAddress, stakeInfo, moveFromAddress, BigInt(0));
+    const batch = await this.getClaimAndMoveStakeBatch(senderAddress, moveFromAddress, stakeInfo);
     await this.signCall(batch, senderAddress, successMessage);
   }
 
@@ -396,6 +485,34 @@ export class DappStakingService implements IDappStakingService {
     return batch;
   }
 
+  protected async getClaimAndMoveStakeBatch(
+    senderAddress: string,
+    moveFromAddress: string,
+    stakeInfo: DappStakeInfo[]
+  ): Promise<ExtrinsicPayload> {
+    const calls: ExtrinsicPayload[] = [];
+
+    // Staker rewards
+    const claimStakerCall = await this.getClaimStakerRewardsCall(senderAddress);
+    claimStakerCall && calls.push(...claimStakerCall);
+    // Bonus rewards
+    const claimBonusCalls = await this.getClaimBonusRewardsCalls(senderAddress);
+    claimBonusCalls && calls.push(...claimBonusCalls);
+    // Move stake
+    for (const info of stakeInfo) {
+      const moveCall = await this.dappStakingRepository.getMoveStakeCall(
+        moveFromAddress,
+        info.address,
+        info.amount
+      );
+      moveCall && calls.push(moveCall);
+    }
+
+    const batch = await this.dappStakingRepository.batchAllCalls(calls);
+
+    return batch;
+  }
+
   private async shouldCleanupExpiredEntries(senderAddress: string): Promise<boolean> {
     const [stakerInfo, constants, protocolState] = await Promise.all([
       this.dappStakingRepository.getStakerInfo(senderAddress, true),
@@ -417,10 +534,8 @@ export class DappStakingService implements IDappStakingService {
     return expiredEntries > 0;
   }
 
-  private async getBonusRewardsAndContractsToClaim(
-    senderAddress: string
-  ): Promise<{ rewards: bigint; contractsToClaim: string[] }> {
-    let result = { rewards: BigInt(0), contractsToClaim: Array<string>() };
+  private async getBonusRewardsAndContractsToClaim(senderAddress: string): Promise<BonusRewards> {
+    let result = { amount: BigInt(0), contractsToClaim: new Map<string, bigint>() };
     const [stakerInfo, protocolState, constants] = await Promise.all([
       this.dappStakingRepository.getStakerInfo(senderAddress, true),
       this.dappStakingRepository.getProtocolState(),
@@ -439,9 +554,10 @@ export class DappStakingService implements IDappStakingService {
       ) {
         const periodEndInfo = await this.dappStakingRepository.getPeriodEndInfo(info.staked.period);
         if (periodEndInfo) {
-          result.rewards +=
+          const reward =
             (info.staked.voting * periodEndInfo.bonusRewardPool) / periodEndInfo.totalVpStake;
-          result.contractsToClaim.push(contract);
+          result.amount += reward;
+          result.contractsToClaim.set(contract, reward);
         } else {
           throw `Period end info not found for period ${info.staked.period}.`;
         }
@@ -507,7 +623,9 @@ export class DappStakingService implements IDappStakingService {
         if (tierReward) {
           const dApp = tierReward?.dapps.find((d) => d.dappId === dapp.id);
           if (dApp && dApp.tierId !== undefined) {
-            result.rewards += tierReward.rewards[dApp.tierId];
+            result.rewards +=
+              tierReward.rewards[dApp.tierId] +
+              BigInt(dApp.rank) * tierReward.rankRewards[dApp.tierId];
             result.erasToClaim.push(firstEra + index);
           }
         }
@@ -606,6 +724,100 @@ export class DappStakingService implements IDappStakingService {
     await this.dappStakingRepository.startAccountLedgerSubscription(address);
   }
 
+  public async getRegisteredContract(developerAddress: string): Promise<string | undefined> {
+    const allDapps = await this.dappStakingRepository.getChainDapps();
+    const dapp = allDapps.find((d) => d.owner === developerAddress);
+
+    return dapp?.address;
+  }
+
+  public async getTvl(): Promise<TvlModel> {
+    const metadata = await this.metadataRepository.getChainMetadata();
+    const [tvl, priceUsd] = await Promise.all([
+      (await this.dappStakingRepository.getCurrentEraInfo()).totalLocked.toString(),
+      this.priceRepository.getUsdPrice(metadata.token),
+    ]);
+
+    const tvlDefaultUnit = Number(
+      ethers.utils.formatUnits(BigInt(tvl.toString()), metadata.decimals)
+    );
+    const tvlUsd = astarMainnetNativeToken.includes(metadata.token as ASTAR_NATIVE_TOKEN)
+      ? tvlDefaultUnit * priceUsd
+      : 0;
+
+    return new TvlModel(tvl, tvlDefaultUnit, tvlUsd);
+  }
+
+  // @inheritdoc
+  public async getStakerApr(block?: number): Promise<number> {
+    const [totalIssuance, inflationParams, eraLengths, eraInfo, protocolState, blockTime] =
+      await Promise.all([
+        this.balancesRepository.getTotalIssuance(block),
+        this.inflationRepository.getInflationParams(block),
+        this.dappStakingRepository.getEraLengths(block),
+        this.dappStakingRepository.getCurrentEraInfo(block),
+        this.dappStakingRepository.getProtocolState(block),
+        this.systemRepository.getBlockTimeInSeconds(block),
+      ]);
+
+    const cyclesPerYear = this.getCyclesPerYear(eraLengths, blockTime);
+    const currentStakeAmount = this.getStakeAmount(protocolState, eraInfo);
+
+    const stakedPercent = currentStakeAmount / weiToToken(totalIssuance);
+    const { baseStakersPart, adjustableStakersPart, idealStakingRate, maxInflationRate } =
+      inflationParams;
+
+    const stakerRewardPercent =
+      baseStakersPart + adjustableStakersPart * Math.min(1, stakedPercent / idealStakingRate);
+    const stakerApr =
+      ((maxInflationRate * stakerRewardPercent) / stakedPercent) * cyclesPerYear * 100;
+
+    return stakerApr;
+  }
+
+  // @inheritdoc
+  public async getBonusApr(
+    simulatedVoteAmount: number = 1000,
+    block?: number
+  ): Promise<{ value: number; simulatedBonusPerPeriod: number }> {
+    const [inflationConfiguration, eraLengths, eraInfo, protocolState, blockTime] =
+      await Promise.all([
+        this.inflationRepository.getInflationConfiguration(block),
+        this.dappStakingRepository.getEraLengths(block),
+        this.dappStakingRepository.getCurrentEraInfo(block),
+        this.dappStakingRepository.getProtocolState(block),
+        this.systemRepository.getBlockTimeInSeconds(block),
+      ]);
+
+    const cyclesPerYear = this.getCyclesPerYear(eraLengths, blockTime);
+
+    const formattedBonusRewardsPoolPerPeriod = weiToToken(
+      inflationConfiguration.bonusRewardPoolPerPeriod
+    );
+    const voteAmount = this.getVoteAmount(protocolState, eraInfo);
+    const bonusPercentPerPeriod = formattedBonusRewardsPoolPerPeriod / voteAmount;
+    const simulatedBonusPerPeriod = simulatedVoteAmount * bonusPercentPerPeriod;
+    const periodsPerYear = eraLengths.periodsPerCycle * cyclesPerYear;
+    const simulatedBonusAmountPerYear = simulatedBonusPerPeriod * periodsPerYear;
+    const bonusApr = (simulatedBonusAmountPerYear / simulatedVoteAmount) * 100;
+
+    return { value: bonusApr, simulatedBonusPerPeriod };
+  }
+
+  private getCyclesPerYear(eraLength: EraLengths, blockTimeInSeconds: number): number {
+    // TODO read from chain
+    const secsOneYear = 365 * 24 * 60 * 60;
+    const periodLength =
+      eraLength.standardErasPerBuildAndEarnPeriod + eraLength.standardErasPerVotingPeriod;
+
+    const eraPerCycle = periodLength * eraLength.periodsPerCycle;
+    const blocksStandardEraLength = eraLength.standardEraLength;
+    const blockPerCycle = blocksStandardEraLength * eraPerCycle;
+    const cyclePerYear = secsOneYear / blockTimeInSeconds / blockPerCycle;
+
+    return cyclePerYear;
+  }
+
   private async getStakerEraRange(senderAddress: string) {
     const [protocolState, ledger, constants] = await Promise.all([
       this.dappStakingRepository.getProtocolState(),
@@ -654,6 +866,7 @@ export class DappStakingService implements IDappStakingService {
       lastSpanIndex,
       rewardsExpired,
       eraRewardSpanLength: constants.eraRewardSpanLength,
+      lastStakedPeriod,
     };
   }
 
@@ -665,16 +878,23 @@ export class DappStakingService implements IDappStakingService {
     return stakedPeriod < currentPeriod - rewardRetentionInPeriods;
   }
 
-  private async signCall(
-    call: ExtrinsicPayload,
-    senderAddress: string,
-    successMessage: string
-  ): Promise<void> {
-    const wallet = this.walletFactory();
-    await wallet.signAndSend({
-      extrinsic: call,
-      senderAddress: senderAddress,
-      successMessage,
-    });
+  private getStakeAmount(protocolState: ProtocolState, eraInfo: EraInfo): number {
+    const currentStakeAmount = weiToToken(
+      protocolState.periodInfo.subperiod === PeriodType.Voting
+        ? eraInfo.nextStakeAmount?.totalStake ?? BigInt(0)
+        : eraInfo.currentStakeAmount.totalStake
+    );
+
+    return currentStakeAmount;
+  }
+
+  private getVoteAmount(protocolState: ProtocolState, eraInfo: EraInfo): number {
+    const currentVoteAmount = weiToToken(
+      protocolState.periodInfo.subperiod === PeriodType.Voting
+        ? eraInfo.nextStakeAmount?.voting ?? BigInt(0)
+        : eraInfo.currentStakeAmount.voting
+    );
+
+    return currentVoteAmount;
   }
 }

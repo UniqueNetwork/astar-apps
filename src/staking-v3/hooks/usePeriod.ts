@@ -10,7 +10,7 @@ export function usePeriod() {
   const periodName = computed<string>(() =>
     protocolState.value?.periodInfo.subperiod === PeriodType.Voting
       ? t('stakingV3.vote')
-      : t('stakingV3.build')
+      : t('stakingV3.buildAndEarn')
   );
 
   const periodDuration = computed<number | undefined>(() =>
@@ -48,5 +48,11 @@ export function usePeriod() {
     }
   });
 
-  return { periodName, periodDuration, periodCurrentDay };
+  const remainingEras = computed<number | undefined>(() =>
+    periodCurrentDay.value && periodDuration.value
+      ? periodDuration.value - periodCurrentDay.value + 1
+      : undefined
+  );
+
+  return { periodName, periodDuration, periodCurrentDay, remainingEras };
 }

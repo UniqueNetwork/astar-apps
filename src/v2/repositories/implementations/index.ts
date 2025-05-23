@@ -1,4 +1,3 @@
-export * from './DappStakingRepository';
 export * from './MetadataRepository';
 export * from './SystemRepository';
 export * from './EthCallRepository';
@@ -19,5 +18,10 @@ export * from './ZkBridgeRepository';
 export * from './xcm/BifrostXcmRepository';
 export * from './xcm/EquilibriumXcmRepository';
 export * from './xcm/UniqueXcmRepository';
+export * from './xcm/HydrationXcmRepository';
+export * from './xcm/PendulumXcmRepository';
 export * from './NftRepository';
 export * from './AccountUnificationRepository';
+export * from './InflationRepository';
+export * from './SubscanRepository';
+export * from './BalancesRepository';

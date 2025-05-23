@@ -1,25 +1,29 @@
+import { ethers, constants as ethersConstants } from 'ethers';
+import { debounce } from 'lodash-es';
 import { endpointKey } from 'src/config/chainEndpoints';
 import { LOCAL_STORAGE } from 'src/config/localStorage';
-import { checkAllowance, getTokenBal } from 'src/config/web3';
+import { checkAllowance, getTokenBal, setupNetwork } from 'src/config/web3';
+import { useAccount, useNetworkInfo } from 'src/hooks';
+import { Erc20Token } from 'src/modules/token';
+import { astarNativeTokenErcAddr } from 'src/modules/xcm';
 import {
   EthBridgeChainId,
   EthBridgeContract,
   EthBridgeNetworkName,
   ZkToken,
+  getNetworkId,
 } from 'src/modules/zk-evm-bridge';
-import { setupNetwork } from 'src/config/web3';
-import { useAccount } from 'src/hooks';
 import { useStore } from 'src/store';
 import { container } from 'src/v2/common';
 import { IZkBridgeService } from 'src/v2/services';
 import { Symbols } from 'src/v2/symbols';
-import { computed, ref, watch, watchEffect, onUnmounted } from 'vue';
+import { WatchCallback, computed, onUnmounted, ref, watch, watchEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useEthProvider } from '../custom-signature/useEthProvider';
-import { astarNativeTokenErcAddr } from 'src/modules/xcm';
-import { ethers, constants as ethersConstants } from 'ethers';
-import { Erc20Token } from 'src/modules/token';
-import { debounce } from 'lodash-es'; // If using lodash
+import { EthereumProvider } from '../types/CustomSignature';
+import { Path } from 'src/router';
+import { useRouter } from 'vue-router';
+import { nativeBridgeEnabled } from 'src/features';
 
 const eth = {
   symbol: 'ETH',
@@ -43,7 +47,7 @@ export const useL1Bridge = () => {
     const networkIdxStore = String(localStorage.getItem(LOCAL_STORAGE.NETWORK_IDX));
     return networkIdxStore === String(endpointKey.ASTAR_ZKEVM)
       ? EthBridgeNetworkName.AstarZk
-      : EthBridgeNetworkName.Zkatana;
+      : EthBridgeNetworkName.Zkyoto;
   });
 
   const zkTokens = ref<ZkToken[]>([]);
@@ -52,12 +56,15 @@ export const useL1Bridge = () => {
   const bridgeAmt = ref<string | null>(null);
   const toBridgeBalance = ref<number>(0);
   const fromBridgeBalance = ref<number>(0);
+  const isGasPayable = ref<boolean | undefined>(undefined);
+  const isLoadingGasPayable = ref<boolean>(true);
   const errMsg = ref<string>('');
-  const fromChainName = ref<EthBridgeNetworkName>(l1Network.value);
-  const toChainName = ref<EthBridgeNetworkName>(l2Network.value);
+  const fromChainName = ref<EthBridgeNetworkName>(l2Network.value);
+  const toChainName = ref<EthBridgeNetworkName>(l1Network.value);
   const isApproved = ref<boolean>(false);
   const isApproving = ref<boolean>(false);
   const isApproveMaxAmount = ref<boolean>(false);
+  const providerChainId = ref<number>(0);
 
   const resetStates = (): void => {
     bridgeAmt.value = '';
@@ -73,6 +80,7 @@ export const useL1Bridge = () => {
   const { t } = useI18n();
   const { currentAccount } = useAccount();
   const { web3Provider, ethProvider } = useEthProvider();
+  const router = useRouter();
 
   const isLoading = computed<boolean>(() => store.getters['general/isLoading']);
   const fromChainId = computed<number>(
@@ -145,10 +153,11 @@ export const useL1Bridge = () => {
                 toChainBalance: 0,
                 toChainTokenAddress: it.bridgedTokenAddress,
                 image: it.image,
+                bridgeUrl: it.bridgeUrl,
               }
             : null;
         })
-        .filter((it: Erc20Token) => it !== null);
+        .filter((it: Erc20Token) => it !== null && !it.bridgeUrl);
 
     let tokens = [];
     if (filteredTokens) {
@@ -157,7 +166,7 @@ export const useL1Bridge = () => {
       tokens = [eth];
     }
 
-    zkTokens.value = await Promise.all(
+    const balTokens = await Promise.all(
       tokens.map(async (token: ZkToken) => {
         let fromChainBalance = '0';
         fromChainBalance = await getTokenBal({
@@ -172,6 +181,31 @@ export const useL1Bridge = () => {
         };
       })
     );
+
+    const sortedTokens = balTokens
+      .sort((a, b) => {
+        if (a.symbol < b.symbol) {
+          return -1;
+        }
+        if (a.symbol > b.symbol) {
+          return 1;
+        }
+        return 0;
+      })
+      .sort((a, b) => Number(b.fromChainBalance) - Number(a.fromChainBalance));
+
+    const moveEthToFront = (tokens: ZkToken[]): ZkToken[] => {
+      const ethIndex = tokens.findIndex((token) => token.symbol === 'ETH');
+      if (ethIndex > -1) {
+        // Memo: Remove the ETH token from its current position
+        const [ethToken] = tokens.splice(ethIndex, 1);
+        // Memo Add the ETH token to the beginning of the array
+        tokens.unshift(ethToken);
+      }
+      return tokens;
+    };
+
+    zkTokens.value = moveEthToFront(sortedTokens);
   };
 
   const setZkTokens = async (token: ZkToken): Promise<void> => {
@@ -219,11 +253,21 @@ export const useL1Bridge = () => {
   const setErrorMsg = (): void => {
     if (isLoading.value) return;
     const bridgeAmtRef = Number(bridgeAmt.value);
+    const providerChainIdRef = providerChainId.value;
+    const selectedTokenRef = selectedToken.value;
+    const isGasPayableRef = isGasPayable.value;
+    const isLoadingGasPayableRef = isLoadingGasPayable.value;
+    const isBalanceNotEnough =
+      !isGasPayableRef && bridgeAmtRef > 0 && isApproved.value && !isLoadingGasPayableRef;
     try {
       if (bridgeAmtRef > fromBridgeBalance.value) {
         errMsg.value = t('warning.insufficientBalance', {
-          token: selectedToken.value.symbol,
+          token: selectedTokenRef.symbol,
         });
+      } else if (providerChainIdRef !== fromChainId.value) {
+        errMsg.value = t('warning.selectedInvalidNetworkInWallet');
+      } else if (isBalanceNotEnough) {
+        errMsg.value = t('warning.balanceNotEnough', { symbol: 'ETH' });
       } else {
         errMsg.value = '';
       }
@@ -247,13 +291,34 @@ export const useL1Bridge = () => {
     resetStates();
   };
 
-  const handleNetwork = async (): Promise<void> => {
+  const setProviderChainId: WatchCallback<[number, EthereumProvider | undefined]> = async (
+    [fromChainId, provider],
+    _,
+    registerCleanup
+  ) => {
     try {
-      if (!web3Provider.value || !ethProvider.value) return;
-      const connectedNetwork = await web3Provider.value!.eth.net.getId();
-      if (connectedNetwork !== fromChainId.value) {
-        await setupNetwork({ network: fromChainId.value, provider: ethProvider.value });
+      if (!provider || !web3Provider.value || !ethProvider.value) return;
+      const chainId = await web3Provider.value.eth.getChainId();
+      providerChainId.value = chainId;
+
+      providerChainId.value = await web3Provider.value!.eth.net.getId();
+      if (providerChainId.value !== fromChainId) {
+        await setupNetwork({ network: fromChainId, provider: ethProvider.value });
+        const chainId = await web3Provider.value.eth.getChainId();
+        providerChainId.value = chainId;
       }
+
+      const handleChainChanged = (chainId: string) => {
+        providerChainId.value = Number(chainId);
+      };
+
+      //subscribe to chainChanged event
+      provider.on('chainChanged', handleChainChanged);
+
+      registerCleanup(() => {
+        // unsubscribe from chainChanged event to prevent memory leak
+        provider.removeListener('chainChanged', handleChainChanged);
+      });
     } catch (error) {
       console.error(error);
     }
@@ -282,6 +347,8 @@ export const useL1Bridge = () => {
       throw Error('Please approve first');
     }
     const zkBridgeService = container.get<IZkBridgeService>(Symbols.ZkBridgeService);
+    const destNetworkId = await getNetworkId(toChainName.value);
+
     const hash = await zkBridgeService.bridgeAsset({
       amount: bridgeAmt.value,
       fromChainName: fromChainName.value,
@@ -289,6 +356,7 @@ export const useL1Bridge = () => {
       senderAddress: currentAccount.value,
       tokenAddress: selectedToken.value.address,
       decimal: selectedToken.value.decimal,
+      destNetworkId,
     });
     await setIsApproved();
     bridgeAmt.value = '';
@@ -296,18 +364,52 @@ export const useL1Bridge = () => {
     return hash;
   };
 
-  watchEffect(setErrorMsg);
+  const setIsGasPayable = async (): Promise<void> => {
+    if (!bridgeAmt.value || !selectedToken.value.address || !isApproved.value) return;
+    try {
+      isLoadingGasPayable.value = true;
+      const zkBridgeService = container.get<IZkBridgeService>(Symbols.ZkBridgeService);
+      const destNetworkId = await getNetworkId(toChainName.value);
+
+      isGasPayable.value = await zkBridgeService.dryRunBridgeAsset({
+        amount: bridgeAmt.value,
+        fromChainName: fromChainName.value,
+        toChainName: toChainName.value,
+        senderAddress: currentAccount.value,
+        tokenAddress: selectedToken.value.address,
+        decimal: selectedToken.value.decimal,
+        destNetworkId,
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      isLoadingGasPayable.value = false;
+    }
+  };
+
+  watch([fromChainId, ethProvider], setProviderChainId, { immediate: true });
+  watch([providerChainId, isLoading, bridgeAmt, selectedToken, isGasPayable], setErrorMsg, {
+    immediate: true,
+  });
+
   watch([fromChainName, toChainName, currentAccount, selectedToken], setBridgeBalance, {
     immediate: true,
   });
-  watch([fromChainName], handleNetwork, { immediate: true });
   watch([currentAccount, fromChainName], initZkTokens, { immediate: true });
 
   const debounceDelay = 500;
+  const debounceIsGasPayable = 1000;
   const debouncedSetIsApproved = debounce(setIsApproved, debounceDelay);
+  const debouncedSetIsGasPayable = debounce(setIsGasPayable, debounceIsGasPayable);
+
   watch([selectedToken, fromChainId, currentAccount, bridgeAmt], debouncedSetIsApproved, {
     immediate: true,
   });
+
+  watch([bridgeAmt, isApproved], debouncedSetIsGasPayable, {
+    immediate: false,
+  });
+
   watch([selectedToken, fromChainId, currentAccount], resetStates);
 
   const autoFetchAllowanceHandler = setInterval(
@@ -318,6 +420,13 @@ export const useL1Bridge = () => {
     },
     isApproving.value ? 5 : 30 * 1000
   );
+
+  // Memo: the app goes to assets page if users access to the bridge page by inputting URL directly
+  watchEffect(() => {
+    if (!nativeBridgeEnabled) {
+      router.push(Path.Assets);
+    }
+  });
 
   onUnmounted(() => {
     clearInterval(autoFetchAllowanceHandler);

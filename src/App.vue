@@ -47,6 +47,7 @@ import ModalLoading from 'components/common/ModalLoading.vue';
 import AlertBox from 'components/common/AlertBox.vue';
 import CookiePolicy from 'components/common/CookiePolicy.vue';
 import ModalDisclaimer from 'components/common/ModalDisclaimer.vue';
+import ModalOnboarding from 'src/staking-v3/components/ModalOnboarding.vue';
 import NotificationStack from './components/common/Notification/NotificationStack.vue';
 import 'animate.css';
 import {
@@ -54,12 +55,12 @@ import {
   ExtrinsicStatusMessage,
   IEventAggregator,
   NewBlockMessage,
-  NewEraMessage,
 } from 'src/v2/messaging';
 import { setCurrentWallet } from 'src/v2/app.container';
 import { container } from 'src/v2/common';
 import { Symbols } from 'src/v2/symbols';
-import { useAccount, useAppRouter } from 'src/hooks';
+import { useAccount, useAppRouter, useBlockTime } from 'src/hooks';
+import { ETHEREUM_EXTENSION } from 'src/modules/account';
 import { LOCAL_STORAGE } from 'src/config/localStorage';
 import {
   AccountLedgerChangedMessage,
@@ -68,6 +69,7 @@ import {
 } from './staking-v3';
 import { useDappStaking, useDapps } from './staking-v3/hooks';
 import { IDappStakingRepository as IDappStakingRepositoryV3 } from 'src/staking-v3/logic/repositories';
+import { useInflation } from 'src/hooks/useInflation';
 
 export default defineComponent({
   name: 'App',
@@ -78,6 +80,7 @@ export default defineComponent({
     CookiePolicy,
     ModalDisclaimer,
     NotificationStack,
+    ModalOnboarding,
   },
   setup() {
     useAppRouter();
@@ -94,7 +97,8 @@ export default defineComponent({
       isDappStakingV3,
     } = useDappStaking();
     const { fetchStakeAmountsToStore, fetchDappsToStore } = useDapps();
-
+    const { fetchActiveConfigurationToStore, fetchInflationParamsToStore } = useInflation();
+    const { fetchBlockTimeToStore } = useBlockTime();
     const isLoading = computed(() => store.getters['general/isLoading']);
     const showAlert = computed(() => store.getters['general/showAlert']);
     const isEthWallet = computed<boolean>(() => store.getters['general/isEthWallet']);
@@ -115,16 +119,18 @@ export default defineComponent({
     // Handle busy and extrinsic call status messages.
     const eventAggregator = container.get<IEventAggregator>(Symbols.EventAggregator);
     eventAggregator.subscribe(ExtrinsicStatusMessage.name, (m) => {
-      const message = m as ExtrinsicStatusMessage;
-      store.dispatch(
-        'general/showAlertMsg',
-        {
-          msg: message.getMessage(),
-          alertType: message.isSuccess() ? 'success' : 'error',
-          explorerUrl: message.getExplorerUrl() || '',
-        },
-        { root: true }
-      );
+      if (m instanceof ExtrinsicStatusMessage) {
+        const message = m as ExtrinsicStatusMessage;
+        store.dispatch(
+          'general/showAlertMsg',
+          {
+            msg: message.getMessage(),
+            alertType: message.isSuccess() ? 'success' : 'error',
+            explorerUrl: message.getExplorerUrl() || '',
+          },
+          { root: true }
+        );
+      }
     });
 
     eventAggregator.subscribe(BusyMessage.name, (m) => {
@@ -137,11 +143,6 @@ export default defineComponent({
       store.commit('general/setCurrentBlock', message.blockNumber, { root: true });
     });
 
-    eventAggregator.subscribe(NewEraMessage.name, (m) => {
-      const message = m as NewEraMessage;
-      store.commit('dapps/setCurrentEra', message.era, { root: true });
-    });
-
     // **** dApp staking v3
     // dApp staking v3 data changed subscriptions.
     onMounted(() => {
@@ -150,6 +151,8 @@ export default defineComponent({
           .get<IDappStakingRepositoryV3>(Symbols.DappStakingRepositoryV3)
           .startProtocolStateSubscription();
       }
+
+      fetchBlockTimeToStore();
     });
 
     eventAggregator.subscribe(ProtocolStateChangedMessage.name, async (m) => {
@@ -166,6 +169,8 @@ export default defineComponent({
           fetchStakeAmountsToStore(),
           fetchStakerInfoToStore(),
           fetchEraLengthsToStore(),
+          fetchActiveConfigurationToStore(),
+          fetchInflationParamsToStore(),
         ]);
       }
     });
@@ -182,7 +187,8 @@ export default defineComponent({
     // Handle wallet change so we can inject proper wallet
     let previousAddress: string | undefined = undefined;
     watch([isEthWallet, currentWallet, isH160, currentAccountName], async () => {
-      setCurrentWallet(isEthWallet.value, currentWallet.value);
+      const isLockdropAccount = !isH160.value && currentAccountName.value === ETHEREUM_EXTENSION;
+      setCurrentWallet(isEthWallet.value, currentWallet.value, isLockdropAccount);
 
       // Subscribe to an account specific dApp staking v3 data.
       if (!isDappStakingV3.value) return;

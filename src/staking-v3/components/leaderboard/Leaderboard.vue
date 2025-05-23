@@ -1,44 +1,55 @@
 <template>
-  <div v-if="!isLeaderboardEmpty" class="wrapper--leaderboard">
-    <div class="title">{{ $t('stakingV3.tierLeaderboard') }}</div>
+  <div
+    v-if="!isLeaderboardEmpty"
+    class="wrapper--leaderboard"
+    :style="{
+      backgroundImage: `url(${require('src/staking-v3/assets/dapp_staking_period002_leaderboard_bg.webp')})`,
+    }"
+  >
+    <div class="wrapper--leaderboard__inner">
+      <div class="title">
+        <span>{{ protocolState?.periodInfo.number.toString().padStart(3, '0') }}</span>
+        <span>{{ $t('stakingV3.votes') }}</span>
+      </div>
 
-    <div class="container--boards">
-      <swiper
-        class="swiper--leaderboard"
-        :slides-per-view="1.25"
-        :slides-per-group="1"
-        :space-between="8"
-        :navigation="true"
-        :modules="modules"
-        :breakpoints="{
-          '768': {
-            slidesPerView: 2.5,
-            slidesPerGroup: 2,
-            spaceBetween: 8,
-          },
-          '1024': {
-            slidesPerView: 2.5,
-            slidesPerGroup: 2,
-            spaceBetween: 8,
-          },
-          '1280': {
-            slidesPerView: 3.5,
-            slidesPerGroup: 3,
-            spaceBetween: 8,
-          },
-        }"
-      >
-        <swiper-slide v-for="[tier, dapps] in leaderBoards" :key="tier">
-          <tier :tier="tier" :dapps="dapps" :daily-reward="getDailyReward(tier)" />
-        </swiper-slide>
-      </swiper>
+      <div class="container--boards">
+        <swiper
+          class="swiper--leaderboard"
+          :slides-per-view="1.25"
+          :slides-per-group="1"
+          :space-between="8"
+          :navigation="true"
+          :modules="modules"
+          :breakpoints="{
+            '768': {
+              slidesPerView: 2.2,
+              slidesPerGroup: 2,
+              spaceBetween: 8,
+            },
+            '1024': {
+              slidesPerView: 2.2,
+              slidesPerGroup: 2,
+              spaceBetween: 8,
+            },
+            '1280': {
+              slidesPerView: 3.2,
+              slidesPerGroup: 3,
+              spaceBetween: 8,
+            },
+          }"
+        >
+          <swiper-slide v-for="[tier, dapps] in leaderBoards" :key="tier">
+            <tier :tier="tier" :dapps="dapps" :daily-reward="getDailyReward(tier)" />
+          </swiper-slide>
+        </swiper>
+      </div>
     </div>
   </div>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import { useLeaderboard } from 'src/staking-v3/hooks';
+import { useDappStaking, useLeaderboard } from 'src/staking-v3/hooks';
 import Tier from './Tier.vue';
 
 // Import Swiper
@@ -55,8 +66,15 @@ export default defineComponent({
   },
   setup() {
     const { leaderBoards, isLeaderboardEmpty, getDailyReward } = useLeaderboard();
+    const { protocolState } = useDappStaking();
 
-    return { leaderBoards, isLeaderboardEmpty, getDailyReward, modules: [Navigation] };
+    return {
+      leaderBoards,
+      isLeaderboardEmpty,
+      protocolState,
+      getDailyReward,
+      modules: [Navigation],
+    };
   },
 });
 </script>
@@ -69,11 +87,11 @@ export default defineComponent({
 .swiper--leaderboard {
   > .swiper-button-prev,
   > .swiper-button-next {
-    color: white;
+    color: $navy-1;
     width: 40px;
     height: 40px;
     border-radius: 20px;
-    background-color: $navy-1;
+    background-color: $white;
     &::after {
       font-size: 12px;
       font-weight: 600;
@@ -81,9 +99,17 @@ export default defineComponent({
   }
   > .swiper-button-prev {
     padding-right: 2px;
+    left: -8px;
+    @media (min-width: $lg) {
+      left: -24px;
+    }
   }
   > .swiper-button-next {
     padding-left: 2px;
+    right: -8px;
+    @media (min-width: $lg) {
+      right: -24px;
+    }
   }
   > .swiper-button-disabled {
     display: none;

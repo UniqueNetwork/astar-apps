@@ -37,18 +37,7 @@
             </div>
           </router-link>
 
-          <button
-            v-if="isZkatana"
-            :disabled="true"
-            :class="['link', path === 'dashboard' && 'active-link']"
-          >
-            <div class="column--item column--item--dashboard">
-              <span class="text--link">Data</span>
-            </div>
-          </button>
-
           <router-link
-            v-else
             :to="RoutePath.Dashboard"
             :class="['link', path === 'dashboard' && 'active-link']"
             @click="showNav = !showNav"
@@ -57,11 +46,22 @@
               <span class="text--link">{{ $t('sidenavi.data') }}</span>
             </div>
           </router-link>
+          <a :href="socialUrl.forum" :class="['link']" target="_blank" @click="showNav = !showNav">
+            <div class="column--item column--item--dashboard">
+              <span class="text--link">{{ $t('sidenavi.forum') }}</span>
+            </div>
+          </a>
+          <a v-if="isGovernanceEnabled" :href="governanceUrl" target="_blank">{{
+            $t('sidenavi.governance')
+          }}</a>
         </nav>
+        <a class="surge-mobile" :href="surgeUrl" target="_blank">
+          <img :src="require('src/assets/img/surge_token.webp')" alt="Go to ACS" />
+        </a>
 
         <div class="gradient-bg">
           <astar-domains />
-          <blog-posts />
+          <!-- <blog-posts /> -->
         </div>
 
         <div class="gradient-bg">
@@ -94,27 +94,27 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, ref, computed } from 'vue';
-import { useBreakpoints } from 'src/hooks';
-import { Path as RoutePath } from 'src/router/routes';
-import { useRouter } from 'vue-router';
-import { useNetworkInfo } from 'src/hooks';
-import { useStore } from 'src/store';
 import { providerEndpoints } from 'src/config/chainEndpoints';
+import { useBreakpoints, useGovernance, useNetworkInfo } from 'src/hooks';
+import { socialUrl, surgeUrl } from 'src/links';
+import { Path as RoutePath } from 'src/router/routes';
+import { useStore } from 'src/store';
+import { computed, defineComponent, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import AstarDomains from './AstarDomains.vue';
 import CommunityLinks from './CommunityLinks.vue';
-import BlogPosts from './BlogPosts.vue';
-import LocaleChanger from './LocaleChanger.vue';
 import LightDarkMode from './LightDarkMode.vue';
+// import BlogPosts from './BlogPosts.vue';
+import LocaleChanger from './LocaleChanger.vue';
 
 export default defineComponent({
-  components: { AstarDomains, CommunityLinks, BlogPosts, LocaleChanger, LightDarkMode },
+  components: { AstarDomains, CommunityLinks, LocaleChanger, LightDarkMode },
   setup() {
     const { width, screenSize } = useBreakpoints();
     const showNav = ref<boolean>(false);
     const router = useRouter();
     const path = computed(() => router.currentRoute.value.path.split('/')[2]);
-    const { isZkatana } = useNetworkInfo();
+    const { isGovernanceEnabled, governanceUrl } = useGovernance();
 
     const store = useStore();
     const currentNetworkIdx = computed(() => store.getters['general/networkIdx']);
@@ -127,7 +127,10 @@ export default defineComponent({
       path,
       RoutePath,
       network,
-      isZkatana,
+      surgeUrl,
+      socialUrl,
+      isGovernanceEnabled,
+      governanceUrl,
     };
   },
 });
@@ -213,5 +216,15 @@ export default defineComponent({
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   padding: 0 16px;
+}
+
+.surge-mobile {
+  display: flex;
+  justify-content: center;
+  margin: 40px 0px;
+  img {
+    width: 100%;
+    max-width: 150px;
+  }
 }
 </style>

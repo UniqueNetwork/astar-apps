@@ -1,16 +1,39 @@
-import { ETHEREUM_EXTENSION } from 'src/hooks';
-import { DappCombinedInfo } from 'src/v2/models/DappsStaking';
+import { ETHEREUM_EXTENSION } from 'src/modules/account';
 import { VoidFn } from '@polkadot/api/types';
 import { BalanceLockTo212 } from '@polkadot/types/interfaces';
-import { PalletBalancesBalanceLock, PalletVestingVestingInfo } from '@polkadot/types/lookup';
-import { BN } from '@polkadot/util';
+import { PalletBalancesBalanceLock, PalletVestingVestingInfo } from 'src/v2/models';
+import { BN, u8aToString } from '@polkadot/util';
 import { $api, $web3 } from 'boot/api';
 import { SystemAccount } from 'src/modules/account';
 import { useStore } from 'src/store';
 import { computed, onUnmounted, ref, Ref, watch } from 'vue';
-import { getVested, isValidEvmAddress } from '@astar-network/astar-sdk-core';
+import { isValidEvmAddress } from '@astar-network/astar-sdk-core';
+import { useDapps } from 'src/staking-v3';
+import { Option, Vec, u128, u32 } from '@polkadot/types';
+
+// Temporarily moved here until uplift polkadot js for astar.js
+export const getVested = ({
+  currentBlock,
+  startBlock,
+  perBlock,
+  locked,
+}: {
+  currentBlock: BN;
+  startBlock: BN;
+  perBlock: BN;
+  locked: BN;
+}): BN => {
+  if (currentBlock.lt(startBlock)) {
+    return new BN(0);
+  }
+
+  const blockHasPast = currentBlock.sub(startBlock);
+  const vested = BN.min(locked, blockHasPast.mul(perBlock));
+  return vested;
+};
 
 function useCall(addressRef: Ref<string>) {
+  const { allDapps } = useDapps();
   const balanceRef = ref(new BN(0));
   const vestedRef = ref(new BN(0));
   const remainingVests = ref(new BN(0));
@@ -19,7 +42,6 @@ function useCall(addressRef: Ref<string>) {
   const isLoadingAccount = ref<boolean>(true);
 
   const isLoading = computed<boolean>(() => store.getters['general/isLoading']);
-  const dapps = computed<DappCombinedInfo[]>(() => store.getters['dapps/getAllDapps']);
 
   const unsub: Ref<VoidFn | undefined> = ref();
 
@@ -58,16 +80,16 @@ function useCall(addressRef: Ref<string>) {
 
     const results = await Promise.all([
       api.query.system.account<SystemAccount>(address),
-      api.query.vesting.vesting(address),
-      api.query.system.number(),
+      api.query.vesting.vesting<Option<Vec<PalletVestingVestingInfo>>>(address),
+      api.query.system.number<u32>(),
       api.derive.balances?.all(address),
     ]);
 
     const accountInfo = results[0];
-    const vesting: PalletVestingVestingInfo[] = results[1].unwrapOr(undefined) || [];
+    const vesting = results[1].unwrapOr(undefined)?.toArray() || [];
     const currentBlock = results[2];
     const vestedClaimable = results[3].vestedClaimable;
-    const locks: (PalletBalancesBalanceLock | BalanceLockTo212)[] = results[3].lockedBreakdown;
+    const locks = <(PalletBalancesBalanceLock | BalanceLockTo212)[]>results[3].lockedBreakdown;
 
     const extendedVesting: ExtendedVestingInfo[] = [];
     vestedRef.value = new BN(0);
@@ -77,8 +99,8 @@ function useCall(addressRef: Ref<string>) {
       const vested = getVested({
         currentBlock: currentBlock.toBn(),
         startBlock: v.startingBlock.toBn() || new BN(0),
-        perBlock: v.perBlock || new BN(0),
-        locked: v.locked,
+        perBlock: v.perBlock.toBn() || new BN(0),
+        locked: v.locked.toBn(),
       });
       vestedRef.value = vestedRef.value.add(vested);
       remainingVests.value = remainingVests.value.add(v.locked.sub(vested));
@@ -116,7 +138,7 @@ function useCall(addressRef: Ref<string>) {
   }, 12000);
 
   watch(
-    [addressRef, isLoading, dapps],
+    [addressRef, isLoading, allDapps],
     () => {
       isLoadingAccount.value = true;
       updateAccountBalance();
@@ -145,6 +167,12 @@ export function useBalance(addressRef: Ref<string>) {
   const useableBalance = computed(() => {
     return accountData.value?.getUsableFeeBalance().toString() || '0';
   });
+  const lockedInDemocracy = computed(() => {
+    const lock = accountData.value?.locks.find((it) => u8aToString(it.id) === 'democrac');
+
+    return lock ? lock.amount.toBigInt() : BigInt(0);
+  });
+
   const isLoadingBalance = ref<boolean>(true);
 
   const { balanceRef, accountDataRef, isLoadingAccount } = useCall(addressRef);
@@ -174,7 +202,7 @@ export function useBalance(addressRef: Ref<string>) {
     { immediate: true }
   );
 
-  return { balance, accountData, useableBalance, isLoadingBalance };
+  return { balance, accountData, useableBalance, isLoadingBalance, lockedInDemocracy };
 }
 
 export class AccountData {
@@ -201,11 +229,20 @@ export class AccountData {
   }
 
   public getUsableTransactionBalance(): BN {
-    return this.free.sub(this.frozen);
+    // refs.
+    // https://wiki.polkadot.network/docs/learn-account-balances
+    // https://github.com/paritytech/polkadot-sdk/blob/e8da320734ae44803f89dd2b35b3cfea0e1ecca1/substrate/frame/balances/src/impl_fungible.rs#L44
+    const existentialDeposit = <u128>$api?.consts.balances.existentialDeposit;
+    if (!existentialDeposit) {
+      return new BN(0);
+    }
+
+    const untouchable = BN.max(this.frozen.sub(this.reserved), existentialDeposit);
+    return this.free.sub(untouchable);
   }
 
   public getUsableFeeBalance(): BN {
-    return this.free.sub(this.frozen);
+    return this.getUsableTransactionBalance();
   }
 
   public free: BN;
@@ -219,26 +256,19 @@ export class AccountData {
   public locks: (PalletBalancesBalanceLock | BalanceLockTo212)[];
 }
 
-// FIXME: the class might be inherited by AccountData
-export class AccountDataH160 {
+export class AccountDataH160 extends AccountData {
   constructor(
-    public free: BN,
-    public reserved: BN,
-    public frozen: BN,
-    public flags: BN,
-    public vested: BN,
-    public vesting: ExtendedVestingInfo[],
-    public vestedClaimable: BN,
-    public remainingVests: BN,
-    public locks: (PalletBalancesBalanceLock | BalanceLockTo212)[]
-  ) {}
-
-  public getUsableTransactionBalance(): BN {
-    return this.free.sub(this.frozen);
-  }
-
-  public getUsableFeeBalance(): BN {
-    return this.free.sub(this.flags);
+    free: BN,
+    reserved: BN,
+    frozen: BN,
+    flags: BN,
+    vested: BN,
+    vesting: ExtendedVestingInfo[],
+    vestedClaimable: BN,
+    remainingVests: BN,
+    locks: (PalletBalancesBalanceLock | BalanceLockTo212)[]
+  ) {
+    super(free, reserved, frozen, flags, vested, vesting, vestedClaimable, remainingVests, locks);
   }
 }
 

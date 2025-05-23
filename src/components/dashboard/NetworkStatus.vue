@@ -3,11 +3,9 @@
     <q-skeleton class="skeleton--value-panel" />
   </div>
   <div v-else class="wrapper--value" data-testid="network-statuses">
-    <div class="container container--value">
-      <div class="row--title">
-        <span class="text--accent container--title--color">
-          {{ $t('dashboard.network.networkStatuses') }}
-        </span>
+    <div>
+      <div class="container--title--large">
+        {{ $t('dashboard.network.networkStatuses') }}
       </div>
       <div class="box--statuses">
         <div class="row--network-statuses">
@@ -77,9 +75,9 @@
               </span>
             </div>
           </div>
-          <div v-if="xcmRestrictions.length > 0" class="container--xcm-restricted">
-            <li v-for="(item, index) in xcmRestrictions" :key="index">{{ item }}</li>
-          </div>
+        </div>
+        <div v-if="xcmRestrictions.length > 0" class="container--xcm-restricted">
+          <li v-for="(item, index) in xcmRestrictions" :key="index">{{ item }}</li>
         </div>
       </div>
     </div>
@@ -96,6 +94,7 @@ import Web3 from 'web3';
 import { endpointKey, providerEndpoints } from 'src/config/chainEndpoints';
 import { useStore } from 'src/store';
 import { useI18n } from 'vue-i18n';
+import { useDappStaking } from 'src/staking-v3';
 
 enum NetworkStatus {
   Working = 'working',
@@ -112,6 +111,7 @@ interface INetworkStatus {
 export default defineComponent({
   setup() {
     const { currentNetworkChain } = useNetworkInfo();
+    const { protocolState } = useDappStaking();
     const store = useStore();
     const { t } = useI18n();
 
@@ -125,9 +125,7 @@ export default defineComponent({
         : [];
     });
 
-    const isDappStakingDisabled = computed<boolean>(
-      () => store.getters['dapps/getIsPalletDisabled']
-    );
+    const isDappStakingDisabled = computed<boolean>(() => protocolState.value?.maintenance ?? true);
 
     const isLoadingNetwork = ref<boolean>(false);
     const astarStatus = ref<INetworkStatus>();
@@ -176,8 +174,18 @@ export default defineComponent({
       }
     };
 
-    const setEvmStatus = async (networkRef: Ref, networkKey: endpointKey): Promise<void> => {
+    const setEvmStatus = async (
+      networkRef: Ref,
+      networkKey: endpointKey,
+      postfix?: string
+    ): Promise<void> => {
       const chainEndpoint = providerEndpoints.find((it) => networkKey === it.key)!;
+      let name = chainEndpoint.displayName;
+
+      if (postfix) {
+        name += ` (${postfix})`;
+      }
+
       try {
         const web3 = new Web3(chainEndpoint.evmEndpoints[0]);
         const latestBlock = await web3.eth.getBlock('latest');
@@ -185,14 +193,14 @@ export default defineComponent({
         const { status, timeAgo } = getTimeAndStatus(blockTime);
 
         networkRef.value = {
-          name: `${chainEndpoint.displayName} (EVM)`,
+          name,
           status,
           timeAgo,
         };
       } catch (error) {
         console.error(error);
         networkRef.value = {
-          name: `${chainEndpoint.displayName} (EVM)`,
+          name,
           status: NetworkStatus.Fixing,
           timeAgo: '0s',
         };
@@ -214,9 +222,9 @@ export default defineComponent({
         await setSubstrateStatus(astarStatus, endpointKey.ASTAR),
         await setSubstrateStatus(shidenStatus, endpointKey.SHIDEN),
         await setSubstrateStatus(shibuyaStatus, endpointKey.SHIBUYA),
-        await setEvmStatus(astarEvmStatus, endpointKey.ASTAR),
-        await setEvmStatus(shidenEvmStatus, endpointKey.SHIDEN),
-        await setEvmStatus(shibuyaEvmStatus, endpointKey.SHIBUYA),
+        await setEvmStatus(astarEvmStatus, endpointKey.ASTAR, 'EVM'),
+        await setEvmStatus(shidenEvmStatus, endpointKey.SHIDEN, 'EVM'),
+        await setEvmStatus(shibuyaEvmStatus, endpointKey.SHIBUYA, 'EVM'),
       ]);
       isLoadingNetwork.value = false;
     });
@@ -233,5 +241,6 @@ export default defineComponent({
 </script>
 
 <style lang="scss" scoped>
+@use 'src/components/dashboard/styles/common.scss';
 @use 'src/components/dashboard/styles/network-status.scss';
 </style>

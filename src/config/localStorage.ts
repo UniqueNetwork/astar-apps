@@ -17,9 +17,13 @@ export enum LOCAL_STORAGE {
   XCM_TX_HISTORIES = 'xcmTxHistories',
   XVM_TX_HISTORIES = 'xvmTxHistories',
   BALLOON_NATIVE_TOKEN = 'balloonNativeToken',
+  BALLOON_CCIP_SEPOLIA = 'balloonCcipSepolia',
+  BALLOON_CCIP_ETHEREUM = 'balloonCcipEthereum',
   THEME_COLOR = 'themeColor',
-  IS_LEDGER = 'isLedger',
   MULTISIG = 'multisig',
+  CLOSE_DAPP_STAKING_V3_ONBOARDING = 'closeDappStakingV3Onboarding',
+  DECOMMISSION = 'decommission',
+  HAS_RAW_METADATA_V15 = 'hasRawMetadataV15',
 }
 
 // Memo: A helper function to return the account's history data that is stored in the browser

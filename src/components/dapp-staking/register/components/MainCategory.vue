@@ -15,7 +15,7 @@
 </template>
 
 <script lang="ts">
-import { NewDappItem } from 'src/store/dapp-staking/state';
+import { NewDappItem } from 'src/staking-v3';
 import { defineComponent, PropType, reactive } from 'vue';
 import ItemsContainer from './ItemsContainer.vue';
 import { Category } from '@astar-network/astar-sdk-core';
@@ -26,6 +26,7 @@ export const possibleCategories = [
   { label: 'Tooling', value: 'tooling' },
   { label: 'Utility', value: 'utility' },
   { label: 'Others', value: 'others' },
+  { label: 'Unstoppable Grants', value: 'unstoppable-grants' },
 ];
 
 export default defineComponent({

@@ -13,16 +13,16 @@ export {
   getTransactionTimestamp,
   checkAllowance,
   getTokenImage,
+  handleCheckProviderChainId,
+  addressToBytes32,
 } from 'src/config/web3/utils';
-
-export { contractInstance, Staking } from 'src/config/web3/contracts';
 
 export type TNetworkId =
   | endpointKey.SHIDEN
   | endpointKey.SHIBUYA
   | endpointKey.ASTAR
   | endpointKey.ASTAR_ZKEVM
-  | endpointKey.ZKATANA;
+  | endpointKey.ZKYOTO;
 
 const chain = {
   shiden: providerEndpoints.find((it) => it.key === endpointKey.SHIDEN),
@@ -31,7 +31,7 @@ const chain = {
   localNode: providerEndpoints.find((it) => it.key === endpointKey.LOCAL),
   rocstar: providerEndpoints.find((it) => it.key === endpointKey.ROCSTAR),
   astarZkEvm: providerEndpoints.find((it) => it.key === endpointKey.ASTAR_ZKEVM),
-  zKatana: providerEndpoints.find((it) => it.key === endpointKey.ZKATANA),
+  zkyoto: providerEndpoints.find((it) => it.key === endpointKey.ZKYOTO),
 };
 
 export enum EVM {
@@ -41,13 +41,15 @@ export enum EVM {
   ASTAR_LOCAL_NODE = Number(chain.localNode!.evmChainId),
   ROCSTAR_TESTNET = Number(chain.rocstar!.evmChainId),
   ASTAR_ZKEVM_MAINNET = Number(chain.astarZkEvm!.evmChainId),
-  ZKATANA_TESTNET = Number(chain.zKatana!.evmChainId),
+  ZKYOTO_TESTNET = Number(chain.zkyoto!.evmChainId),
   ETHEREUM_MAINNET = 1,
   SEPOLIA_TESTNET = 11155111,
   BSC = 56,
   POLYGON = 137,
   MOONRIVER = 1285,
   MOONBEAM = 1284,
+  SONEIUM_MINATO_TESTNET = 1946,
+  SONEIUM = 1868,
 }
 
 export const chainName = {
@@ -57,13 +59,15 @@ export const chainName = {
   [EVM.SHIDEN_MAINNET]: 'Shiden Network Mainnet',
   [EVM.SHIBUYA_TESTNET]: 'Shibuya Testnet',
   [EVM.ASTAR_ZKEVM_MAINNET]: 'Astar zkEVM Mainnet',
-  [EVM.ZKATANA_TESTNET]: 'zKatana Testnet',
+  [EVM.ZKYOTO_TESTNET]: 'zKyoto Testnet',
   [EVM.ASTAR_LOCAL_NODE]: 'Astar Local Node',
   [EVM.ROCSTAR_TESTNET]: 'Rocstar',
   [EVM.BSC]: 'Binance Smart Chain',
   [EVM.POLYGON]: 'Polygon Mainnet',
   [EVM.MOONRIVER]: 'Moonriver Mainnet',
   [EVM.MOONBEAM]: 'Moonbeam Mainnet',
+  [EVM.SONEIUM_MINATO_TESTNET]: 'Soneium Minato Testnet',
+  [EVM.SONEIUM]: 'Soneium Mainnet',
 };
 
 export const nativeCurrency = {
@@ -102,7 +106,7 @@ export const nativeCurrency = {
     symbol: 'ETH',
     decimals: 18,
   },
-  [EVM.ZKATANA_TESTNET]: {
+  [EVM.ZKYOTO_TESTNET]: {
     name: 'ETH',
     symbol: 'ETH',
     decimals: 18,
@@ -132,11 +136,22 @@ export const nativeCurrency = {
     symbol: 'GLMR',
     decimals: 18,
   },
+  [EVM.SONEIUM_MINATO_TESTNET]: {
+    name: 'ETH',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  [EVM.SONEIUM]: {
+    name: 'ETH',
+    symbol: 'ETH',
+    decimals: 18,
+  },
 };
 
 export const rpcUrls = {
-  [EVM.ETHEREUM_MAINNET]: ['https://mainnet-nethermind.blockscout.com/'],
-  [EVM.SEPOLIA_TESTNET]: ['https://sepolia-01.astar.network'],
+  [EVM.ETHEREUM_MAINNET]: ['https://ethereum-rpc.publicnode.com'],
+  [EVM.SEPOLIA_TESTNET]: ['https://ethereum-sepolia-rpc.publicnode.com'],
+  // [EVM.SEPOLIA_TESTNET]: ['https://sepolia-01.astar.network'],
   // [EVM.SEPOLIA_TESTNET]: ['https://eth-sepolia.public.blastapi.io'],
   // [EVM.SEPOLIA_TESTNET]: ['https://rpc.sepolia.online'],
   [EVM.SHIDEN_MAINNET]: [chain.shiden?.evmEndpoints[0]],
@@ -144,12 +159,14 @@ export const rpcUrls = {
   [EVM.ROCSTAR_TESTNET]: [chain.rocstar?.evmEndpoints[0]],
   [EVM.ASTAR_MAINNET]: [chain.astar?.evmEndpoints[0]],
   [EVM.ASTAR_ZKEVM_MAINNET]: [chain.astarZkEvm?.evmEndpoints[0]],
-  [EVM.ZKATANA_TESTNET]: [chain.zKatana?.evmEndpoints[0]],
+  [EVM.ZKYOTO_TESTNET]: [chain.zkyoto?.evmEndpoints[0]],
   [EVM.ASTAR_LOCAL_NODE]: [chain.localNode?.evmEndpoints[0]],
   [EVM.BSC]: ['https://bsc-dataseed.binance.org'],
   [EVM.POLYGON]: ['https://rpc-mainnet.maticvigil.com'],
   [EVM.MOONRIVER]: ['https://rpc.api.moonriver.moonbeam.network'],
   [EVM.MOONBEAM]: ['https://rpc.api.moonbeam.network'],
+  [EVM.SONEIUM_MINATO_TESTNET]: ['https://rpc.minato.soneium.org'],
+  [EVM.SONEIUM]: ['https://rpc.soneium.org/'],
 };
 
 export const blockExplorerUrls = {
@@ -160,11 +177,13 @@ export const blockExplorerUrls = {
   [EVM.ROCSTAR_TESTNET]: [chain.rocstar?.blockscout],
   [EVM.ASTAR_MAINNET]: [chain.astar?.blockscout],
   [EVM.ASTAR_ZKEVM_MAINNET]: [chain.astarZkEvm?.blockscout],
-  [EVM.ZKATANA_TESTNET]: [chain.zKatana?.blockscout],
+  [EVM.ZKYOTO_TESTNET]: [chain.zkyoto?.blockscout],
   [EVM.BSC]: ['https://bscscan.com'],
   [EVM.POLYGON]: ['https://explorer.matic.network'],
   [EVM.MOONRIVER]: ['https://moonriver.moonscan.io'],
   [EVM.MOONBEAM]: ['https://moonbeam.moonscan.io'],
+  [EVM.SONEIUM_MINATO_TESTNET]: ['https://soneium-minato.blockscout.com'],
+  [EVM.SONEIUM]: ['https://soneium.blockscout.com'],
 };
 
 export const CHAIN_INFORMATION = {

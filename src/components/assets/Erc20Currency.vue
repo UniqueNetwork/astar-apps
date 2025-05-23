@@ -53,7 +53,10 @@
           </router-link>
 
           <div v-if="token.isWrappedToken && !token.isXC20">
-            <a :href="token.wrapUrl" target="_blank" rel="noopener noreferrer">
+            <custom-router-link
+              :to="token.bridgeUrl ?? ''"
+              :is-disabled="!token.bridgeUrl || !isBridgeEnabled(token.bridgeUrl)"
+            >
               <button class="btn btn--icon">
                 <astar-icon-bridge class="icon--bridge" />
               </button>
@@ -61,19 +64,46 @@
               <q-tooltip>
                 <span class="text--tooltip">{{ $t('assets.wrap') }}</span>
               </q-tooltip>
-            </a>
+            </custom-router-link>
           </div>
 
           <div v-if="isZkEvm">
-            <router-link :to="buildEthereumBridgePageLink()">
-              <button class="btn btn--icon">
-                <astar-icon-bridge class="icon--bridge" />
-              </button>
+            <custom-router-link
+              v-if="token.bridgeUrl"
+              :to="token.bridgeUrl"
+              :is-disabled="!isBridgeEnabled(token.bridgeUrl)"
+            >
+              <button class="btn btn--icon"><astar-icon-bridge class="icon--bridge" /></button>
               <span class="text--expand-menu">{{ $t('assets.bridge') }}</span>
               <q-tooltip>
                 <span class="text--tooltip">{{ $t('assets.bridge') }}</span>
               </q-tooltip>
-            </router-link>
+            </custom-router-link>
+            <custom-router-link
+              v-else
+              :to="buildEthereumBridgePageLink()"
+              :is-disabled="!nativeBridgeEnabled"
+            >
+              <button class="btn btn--icon"><astar-icon-bridge class="icon--bridge" /></button>
+              <span class="text--expand-menu">{{ $t('assets.bridge') }}</span>
+              <q-tooltip>
+                <span class="text--tooltip">{{ $t('assets.bridge') }}</span>
+              </q-tooltip>
+            </custom-router-link>
+          </div>
+
+          <div v-else>
+            <custom-router-link
+              v-if="token.bridgeUrl"
+              :to="token.bridgeUrl"
+              :is-disabled="!isBridgeEnabled(token.bridgeUrl)"
+            >
+              <button class="btn btn--icon"><astar-icon-bridge class="icon--bridge" /></button>
+              <span class="text--expand-menu">{{ $t('assets.bridge') }}</span>
+              <q-tooltip>
+                <span class="text--tooltip">{{ $t('assets.bridge') }}</span>
+              </q-tooltip>
+            </custom-router-link>
           </div>
 
           <a :href="explorerLink" target="_blank" rel="noopener noreferrer">
@@ -151,10 +181,13 @@ import { useStore } from 'src/store';
 import { PropType, computed, defineComponent, ref } from 'vue';
 import Jazzicon from 'vue3-jazzicon/src/components';
 import { truncate } from '@astar-network/astar-sdk-core';
+import { nativeBridgeEnabled, isBridgeEnabled } from 'src/features';
+import CustomRouterLink from '../common/CustomRouterLink.vue';
 
 export default defineComponent({
   components: {
     [Jazzicon.name]: Jazzicon,
+    CustomRouterLink,
   },
   props: {
     token: {
@@ -211,11 +244,13 @@ export default defineComponent({
       isTruncate,
       isFavorite,
       isZkEvm,
+      nativeBridgeEnabled,
       truncate,
       buildTransferPageLink,
       addToEvmProvider,
       handleDeleteStoredToken,
       buildEthereumBridgePageLink,
+      isBridgeEnabled,
     };
   },
 });

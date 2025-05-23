@@ -21,6 +21,10 @@ export default defineComponent({
 <style lang="scss">
 .wrapper--dapp-staking {
   height: 100%;
+  @media (min-width: $lg) {
+    padding-left: 40px;
+    padding-right: 40px;
+  }
 }
 
 .dapps-staking-bg {

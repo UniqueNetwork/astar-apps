@@ -4,6 +4,7 @@ import {
   AccountLedgerChangedMessage,
   Constants,
   ContractStakeAmount,
+  DAppTier,
   DAppTierRewards,
   Dapp,
   DappBase,
@@ -12,7 +13,6 @@ import {
   EraInfo,
   EraLengths,
   EraRewardSpan,
-  InflationParam,
   PeriodEndInfo,
   PeriodType,
   ProtocolState,
@@ -20,7 +20,6 @@ import {
   SingularStakingInfo,
   StakeAmount,
   TiersConfiguration,
-  TvlAmountType,
 } from '../models';
 import axios from 'axios';
 import { inject, injectable } from 'inversify';
@@ -28,27 +27,58 @@ import { Symbols } from 'src/v2/symbols';
 import { IApi } from 'src/v2/integration';
 import {
   PalletDappStakingV3AccountLedger,
-  PalletDappStakingV3ActiveInflationConfig,
   PalletDappStakingV3ContractStakeAmount,
   PalletDappStakingV3DAppInfo,
   PalletDappStakingV3DAppTierRewards,
   PalletDappStakingV3EraInfo,
   PalletDappStakingV3EraRewardSpan,
-  PalletDappStakingV3InflationParams,
   PalletDappStakingV3PeriodEndInfo,
   PalletDappStakingV3ProtocolState,
   PalletDappStakingV3SingularStakingInfo,
   PalletDappStakingV3StakeAmount,
   PalletDappStakingV3TiersConfiguration,
+  PalletDappStakingV3TiersConfigurationLegacy,
+  PalletDappStakingV3TierThreshold,
   SmartContractAddress,
 } from '../interfaces';
 import { IEventAggregator } from 'src/v2/messaging';
-import { Option, StorageKey, u32, u128, Bytes } from '@polkadot/types';
+import { Option, StorageKey, u32, u128, Bytes, u16 } from '@polkadot/types';
 import { IDappStakingRepository } from './IDappStakingRepository';
 import { Guard } from 'src/v2/common';
 import { ethers } from 'ethers';
 import { AnyTuple, Codec } from '@polkadot/types/types';
 import { u8aToNumber } from '@polkadot/util';
+import { HttpCodes } from 'src/constants';
+
+const ERA_LENGTHS = new Map<string, EraLengths>([
+  [
+    'Shibuya Testnet',
+    {
+      standardErasPerBuildAndEarnPeriod: 20,
+      standardErasPerVotingPeriod: 8,
+      standardEraLength: 1800,
+      periodsPerCycle: 2,
+    },
+  ],
+  [
+    'Shiden',
+    {
+      standardErasPerBuildAndEarnPeriod: 55,
+      standardErasPerVotingPeriod: 6,
+      standardEraLength: 7200,
+      periodsPerCycle: 6,
+    },
+  ],
+  [
+    'Astar',
+    {
+      standardErasPerBuildAndEarnPeriod: 111,
+      standardErasPerVotingPeriod: 11,
+      standardEraLength: 7200,
+      periodsPerCycle: 3,
+    },
+  ],
+]);
 
 @injectable()
 export class DappStakingRepository implements IDappStakingRepository {
@@ -67,18 +97,30 @@ export class DappStakingRepository implements IDappStakingRepository {
   }
 
   //* @inheritdoc
-  public async getDapp(network: string, dappAddress: string): Promise<Dapp> {
+  public async getDapp(
+    network: string,
+    dappAddress: string,
+    forEdit = false
+  ): Promise<Dapp | undefined> {
     Guard.ThrowIfUndefined(network, 'network');
     Guard.ThrowIfUndefined(dappAddress, 'dappAddress');
-    const url = `${TOKEN_API_URL}/v1/${network.toLowerCase()}/dapps-staking/dapps/${dappAddress}`;
-    const response = await axios.get<Dapp>(url);
+    const url = `${TOKEN_API_URL}/v1/${network.toLowerCase()}/dapps-staking/dapps/${dappAddress}?forEdit=${forEdit}`;
 
-    return response.data;
+    try {
+      const response = await axios.get<Dapp>(url);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === HttpCodes.NotFound) {
+        return undefined;
+      }
+
+      throw error;
+    }
   }
 
   //* @inheritdoc
-  public async getProtocolState(): Promise<ProtocolState> {
-    const api = await this.api.getApi();
+  public async getProtocolState(block?: number): Promise<ProtocolState> {
+    const api = await this.api.getApi(block);
     const state =
       await api.query.dappStaking.activeProtocolState<PalletDappStakingV3ProtocolState>();
 
@@ -174,12 +216,28 @@ export class DappStakingRepository implements IDappStakingRepository {
   }
 
   //* @inheritdoc
-  public async getStakeCall(contractAddress: string, amount: number): Promise<ExtrinsicPayload> {
+  public async getStakeCall(contractAddress: string, amount: bigint): Promise<ExtrinsicPayload> {
     Guard.ThrowIfUndefined(contractAddress, 'contractAddress');
     const api = await this.api.getApi();
-    const amountFormatted = this.getFormattedAmount(amount);
 
-    return api.tx.dappStaking.stake(getDappAddressEnum(contractAddress), amountFormatted);
+    return api.tx.dappStaking.stake(getDappAddressEnum(contractAddress), amount);
+  }
+
+  //* @inheritdoc
+  public async getMoveStakeCall(
+    fromContractAddress: string,
+    toContractAddress: string,
+    amount: bigint
+  ): Promise<ExtrinsicPayload> {
+    Guard.ThrowIfUndefined(fromContractAddress, 'fromContractAddress');
+    Guard.ThrowIfUndefined(toContractAddress, 'toContractAddress');
+    const api = await this.api.getApi();
+
+    return api.tx.dappStaking.moveStake(
+      getDappAddressEnum(fromContractAddress),
+      getDappAddressEnum(toContractAddress),
+      amount
+    );
   }
 
   //* @inheritdoc
@@ -273,21 +331,38 @@ export class DappStakingRepository implements IDappStakingRepository {
     };
   }
 
-  public async getEraLengths(): Promise<EraLengths> {
+  public async getEraLengths(block?: number): Promise<EraLengths> {
     const getNumber = (bytes: Bytes): number => u8aToNumber(bytes.toU8a().slice(1, 4));
-    const api = await this.api.getApi();
+    const api = await this.api.getApi(block);
 
-    const [erasPerBuildAndEarn, erasPerVoting, eraLength] = await Promise.all([
-      api.rpc.state.call('DappStakingApi_eras_per_build_and_earn_subperiod', ''),
-      api.rpc.state.call('DappStakingApi_eras_per_voting_subperiod', ''),
-      api.rpc.state.call('DappStakingApi_blocks_per_era', ''),
-    ]);
+    if (api.rpc) {
+      const [erasPerBuildAndEarn, erasPerVoting, eraLength, periodsPerCycle] = await Promise.all([
+        api.rpc.state.call('DappStakingApi_eras_per_build_and_earn_subperiod', ''),
+        api.rpc.state.call('DappStakingApi_eras_per_voting_subperiod', ''),
+        api.rpc.state.call('DappStakingApi_blocks_per_era', ''),
+        api.rpc.state.call('DappStakingApi_periods_per_cycle', ''),
+      ]);
 
-    return {
-      standardErasPerBuildAndEarnPeriod: getNumber(erasPerBuildAndEarn),
-      standardErasPerVotingPeriod: getNumber(erasPerVoting),
-      standardEraLength: getNumber(eraLength),
-    };
+      return {
+        standardErasPerBuildAndEarnPeriod: getNumber(erasPerBuildAndEarn),
+        standardErasPerVotingPeriod: getNumber(erasPerVoting),
+        standardEraLength: getNumber(eraLength),
+        periodsPerCycle: getNumber(periodsPerCycle),
+      };
+    }
+
+    // Can't use api.rpc for past blocks
+    // Using constants should be fine, because era lengths are not expected to change
+    // in near future.
+    const currentApi = await this.api.getApi();
+    const network = currentApi.runtimeChain.toHuman();
+    const eraLen = ERA_LENGTHS.get(network);
+
+    if (eraLen) {
+      return eraLen;
+    }
+
+    throw new Error(`Era lengths are not defined for this network: ${network}`);
   }
 
   //* @inheritdoc
@@ -305,6 +380,9 @@ export class DappStakingRepository implements IDappStakingRepository {
       maxNumberOfContracts: (<u32>api.consts.dappStaking.maxNumberOfContracts).toNumber(),
       maxUnlockingChunks: (<u32>api.consts.dappStaking.maxUnlockingChunks).toNumber(),
       unlockingPeriod: (<u32>api.consts.dappStaking.unlockingPeriod).toNumber(),
+      maxBonusSafeMovesPerPeriod: (<u32>(
+        api.consts.dappStaking.maxBonusSafeMovesPerPeriod
+      )).toNumber(),
     };
   }
 
@@ -320,14 +398,38 @@ export class DappStakingRepository implements IDappStakingRepository {
     }
 
     const tiers = tiersWrapped.unwrap();
+    const dapps: DAppTier[] = [];
+    tiers.dapps.forEach((value, key) =>
+      dapps.push(this.mapDappTier(key.toNumber(), value.toNumber()))
+    );
     return {
       period: tiers.period.toNumber(),
-      dapps: tiers.dapps.map((dapp) => ({
-        dappId: dapp.dappId.toNumber(),
-        tierId: dapp.tierId.unwrapOr(undefined)?.toNumber(),
-      })),
+      dapps,
       rewards: tiers.rewards.map((reward) => reward.toBigInt()),
+      rankRewards: tiers.rankRewards?.map((reward) => reward.toBigInt()) ?? [
+        BigInt(0),
+        BigInt(0),
+        BigInt(0),
+        BigInt(0),
+      ], // for backward compatibility in case when not deployed on all networks
     };
+  }
+
+  //* @inheritdoc
+  public async getLeaderboard(): Promise<Map<number, DAppTier>> {
+    const api = await this.api.getApi();
+    const tierAssignmentsBytes = await api.rpc.state.call(
+      'DappStakingApi_get_dapp_tier_assignment',
+      ''
+    );
+    const tierAssignment = api.createType('BTreeMap<u16, u8>', tierAssignmentsBytes);
+
+    const result = new Map<number, DAppTier>();
+    tierAssignment.forEach((value, key) =>
+      result.set(key.toNumber(), this.mapDappTier(key.toNumber(), value.toNumber()))
+    );
+
+    return result;
   }
 
   public async getStakerInfo(
@@ -377,39 +479,19 @@ export class DappStakingRepository implements IDappStakingRepository {
   public async batchAllCalls(calls: ExtrinsicPayload[]): Promise<ExtrinsicPayload> {
     const api = await this.api.getApi();
 
-    return api.tx.utility.batchAll(calls);
+    return calls.length === 1 ? calls[0] : api.tx.utility.batchAll(calls);
   }
 
-  public async getCurrentEraInfo(): Promise<EraInfo> {
-    const api = await this.api.getApi();
+  public async getCurrentEraInfo(block?: number): Promise<EraInfo> {
+    const api = await this.api.getApi(block);
     const info = await api.query.dappStaking.currentEraInfo<PalletDappStakingV3EraInfo>();
 
     return {
       totalLocked: info.totalLocked.toBigInt(),
-      activeEraLocked: info.activeEraLocked?.toBigInt(),
       unlocking: info.unlocking.toBigInt(),
       currentStakeAmount: this.mapStakeAmount(info.currentStakeAmount),
       nextStakeAmount: this.mapStakeAmount(info.nextStakeAmount),
     };
-  }
-
-  public async getInflationParams(): Promise<InflationParam> {
-    const api = await this.api.getApi();
-    const data = await api.query.inflation.inflationParams<PalletDappStakingV3InflationParams>();
-
-    return {
-      maxInflationRate: String(data.maxInflationRate),
-      adjustableStakersPart: String(data.adjustableStakersPart),
-      baseStakersPart: String(data.baseStakersPart),
-      idealStakingRate: String(data.idealStakingRate),
-    };
-  }
-
-  public async getBonusRewardPoolPerPeriod(): Promise<string> {
-    const api = await this.api.getApi();
-    const data =
-      await api.query.inflation.activeInflationConfig<PalletDappStakingV3ActiveInflationConfig>();
-    return String(data.bonusRewardPoolPerPeriod);
   }
 
   public async getContractStake(dappId: number): Promise<ContractStakeAmount> {
@@ -418,6 +500,24 @@ export class DappStakingRepository implements IDappStakingRepository {
       await api.query.dappStaking.contractStake<PalletDappStakingV3ContractStakeAmount>(dappId);
 
     return this.mapContractStakeAmount(contractStake);
+  }
+
+  public async getContractsStake(
+    dappIds: number[],
+    block?: number
+  ): Promise<Map<number, ContractStakeAmount>> {
+    const api = await this.api.getApi(block);
+    const contractStakes =
+      await api.query.dappStaking.contractStake.multi<PalletDappStakingV3ContractStakeAmount>(
+        dappIds
+      );
+
+    return new Map<number, ContractStakeAmount>(
+      contractStakes.map((contractStake, index) => [
+        dappIds[index],
+        this.mapContractStakeAmount(contractStake),
+      ])
+    );
   }
 
   //* @inheritdoc
@@ -433,32 +533,64 @@ export class DappStakingRepository implements IDappStakingRepository {
   }
 
   public async getTiersConfiguration(): Promise<TiersConfiguration> {
+    const TIER_DERIVATION_PALLET_VERSION = 8;
     const api = await this.api.getApi();
-    const configuration =
-      await api.query.dappStaking.tierConfig<PalletDappStakingV3TiersConfiguration>();
+    const palletVersion = (await api.query.dappStaking.palletVersion<u16>()).toNumber();
+    let configuration:
+      | PalletDappStakingV3TiersConfiguration
+      | PalletDappStakingV3TiersConfigurationLegacy;
+
+    if (palletVersion >= TIER_DERIVATION_PALLET_VERSION) {
+      configuration =
+        await api.query.dappStaking.tierConfig<PalletDappStakingV3TiersConfiguration>();
+    } else {
+      configuration =
+        await api.query.dappStaking.tierConfig<PalletDappStakingV3TiersConfigurationLegacy>();
+    }
 
     return {
-      numberOfSlots: configuration.numberOfSlots.toNumber(),
+      numberOfSlots: configuration.slotsPerTier.reduce((acc, val) => acc + val.toNumber(), 0),
       slotsPerTier: configuration.slotsPerTier.map((slot) => slot.toNumber()),
       rewardPortion: configuration.rewardPortion.map((portion) => portion.toNumber() / 1_000_000),
-      tierThresholds: configuration.tierThresholds.map((threshold) =>
-        threshold.isDynamicTvlAmount
-          ? {
-              type: TvlAmountType.DynamicTvlAmount,
-              amount: threshold.asDynamicTvlAmount.amount.toBigInt(),
-              minimumAmount: threshold.asDynamicTvlAmount.minimumAmount.toBigInt(),
-            }
-          : {
-              type: TvlAmountType.FixedTvlAmount,
-              amount: threshold.asFixedTvlAmount.amount.toBigInt(),
-            }
-      ),
+      tierThresholds: configuration.tierThresholds.map((threshold) => {
+        // Support both u128 and PalletDappStakingV3TierThreshold.
+        // If threshold has isUnsigned property it's u128.
+        // TODO: remove palletVersion check when u128 is used for all thresholds. Most likely in Astar period 003.
+        if (palletVersion < TIER_DERIVATION_PALLET_VERSION) {
+          const t = <PalletDappStakingV3TierThreshold>threshold;
+          if (t.isDynamicTvlAmount) {
+            return t.asDynamicTvlAmount.amount.toBigInt();
+          }
+
+          return t.asFixedTvlAmount.amount.toBigInt();
+        }
+
+        const t = <u128>threshold;
+        return t.toBigInt();
+      }),
     };
   }
 
   public async getCleanupExpiredEntriesCall(): Promise<ExtrinsicPayload> {
     const api = await this.api.getApi();
     return api.tx.dappStaking.cleanupExpiredEntries();
+  }
+
+  /** @inheritdoc */
+  public async getUnbondAndUnstakeCall(amount: bigint): Promise<ExtrinsicPayload> {
+    const api = await this.api.getApi();
+    // Memo: address is ignored by runtime, but we need to pass something
+    // because runtime needs to keep the method signature.
+    return api.tx.dappStaking.unbondAndUnstake(
+      getDappAddressEnum('ajYMsCKsEAhEvHpeA4XqsfiA9v1CdzZPrCfS6pEfeGHW9j8'),
+      amount
+    );
+  }
+
+  /** @inheritdoc */
+  public async getWithdrawUnbondedCall(): Promise<ExtrinsicPayload> {
+    const api = await this.api.getApi();
+    return api.tx.dappStaking.withdrawUnbonded();
   }
 
   // ------------------ MAPPERS ------------------
@@ -516,8 +648,8 @@ export class DappStakingRepository implements IDappStakingRepository {
       address,
       owner: dapp.owner.toString(),
       id: dapp.id.toNumber(),
-      state: dapp.state.isUnregistered ? DappState.Unregistered : DappState.Registered,
-      rewardDestination: dapp.rewardDestination.unwrapOr(undefined)?.toString(),
+      state: DappState.Registered, // All dApss from integratedDApps are registered.
+      rewardDestination: dapp.rewardBeneficiary.unwrapOr(undefined)?.toString(),
     };
   }
 
@@ -531,7 +663,7 @@ export class DappStakingRepository implements IDappStakingRepository {
     includePreviousPeriods: boolean
   ): Map<string, SingularStakingInfo> {
     const result = new Map<string, SingularStakingInfo>();
-    stakers.forEach(([key, value]) => {
+    for (const [key, value] of stakers) {
       const v = <Option<PalletDappStakingV3SingularStakingInfo>>value;
 
       if (v.isSome) {
@@ -542,15 +674,27 @@ export class DappStakingRepository implements IDappStakingRepository {
           address &&
           (unwrappedValue.staked.period.toNumber() === currentPeriod || includePreviousPeriods)
         ) {
+          //0 means the bonus is forfeited, and 1 or greater indicates that the stake is eligible for bonus.
+          const bonusStatus = unwrappedValue.bonusStatus.toNumber();
           result.set(address, <SingularStakingInfo>{
-            loyalStaker: unwrappedValue.loyalStaker.isTrue,
+            loyalStaker: bonusStatus > 0,
             staked: this.mapStakeAmount(unwrappedValue.staked),
+            previousStaked: this.mapStakeAmount(unwrappedValue.previousStaked),
+            bonusStatus,
           });
         }
       }
-    });
+    }
 
-    console.log('Staker info size: ' + result.size);
+    console.log(`Staker info size: ${result.size}`);
     return result;
+  }
+
+  private mapDappTier(dappId: number, rankTier: number): DAppTier {
+    return {
+      dappId: dappId,
+      tierId: rankTier & 0xf,
+      rank: rankTier >> 4,
+    };
   }
 }

@@ -11,6 +11,8 @@ import {
 } from './state';
 import type { ChainInfo } from 'src/hooks/useChainInfo';
 import type { Extensions } from 'src/hooks/useMetaExtensions';
+import { InflationConfiguration } from 'src/v2/models';
+import { InflationParam } from 'src/staking-v3';
 
 export interface GeneralGetters {
   initialized(state: State): boolean;
@@ -25,7 +27,6 @@ export interface GeneralGetters {
   networkIdx(state: State): number;
   isEthWallet(state: State): boolean;
   isH160Formatted(state: State): boolean;
-  isLedger(state: State): boolean;
   currentEcdsaAccount(state: State): EcdsaAccount;
   selectedAddress(state: State): string;
   theme(state: State): Theme;
@@ -34,6 +35,9 @@ export interface GeneralGetters {
   getGas(state: State): GasTip | undefined;
   getCurrentBlock(state: State): number;
   getUnifiedAccount(state: State): UnifiedAccount | undefined;
+  getActiveInflationConfiguration(state: State): InflationConfiguration | undefined;
+  getInflationParameters(state: State): InflationParam | undefined;
+  getBlockTimeInSeconds(state: State): number | undefined;
 }
 
 const getters: GetterTree<State, StateInterface> & GeneralGetters = {
@@ -49,7 +53,6 @@ const getters: GetterTree<State, StateInterface> & GeneralGetters = {
   networkIdx: (state) => state.currentNetworkIdx,
   isEthWallet: (state) => state.isEthWallet,
   isH160Formatted: (state) => state.isH160Formatted,
-  isLedger: (state) => state.isLedger,
   currentEcdsaAccount: (state) => state.currentEcdsaAccount,
   theme: (state: State) => state.currentTheme,
   selectedAddress: (state: State) => {
@@ -60,6 +63,9 @@ const getters: GetterTree<State, StateInterface> & GeneralGetters = {
   getGas: (state: State) => state.gas,
   getCurrentBlock: (state: State) => state.currentBlock,
   getUnifiedAccount: (state: State) => state.unifiedAccount,
+  getActiveInflationConfiguration: (state: State) => state.activeInflationConfiguration,
+  getInflationParameters: (state: State) => state.inflationParameters,
+  getBlockTimeInSeconds: (state: State) => state.blockTimeInSeconds,
 };
 
 export default getters;

@@ -13,14 +13,14 @@ import { LOCAL_STORAGE } from 'src/config/localStorage';
  * @param decimal eg: 18
  * @returns '0.244 SDN'
  */
-export const balanceFormatter = (bal: BN | string, decimal = ASTAR_DECIMALS): string => {
+export const balanceFormatter = (
+  bal: BN | string,
+  decimal = ASTAR_DECIMALS,
+  includeCurrency = true
+): string => {
   let amount;
-  if (isString(bal)) {
-    amount = defaultAmountWithDecimals(new BN(bal), decimal);
-  } else {
-    amount = defaultAmountWithDecimals(bal, decimal);
-  }
+  amount = defaultAmountWithDecimals(bal.toString(), decimal);
 
   const defaultCurrency = localStorage.getItem(LOCAL_STORAGE.DEFAULT_CURRENCY);
-  return `${nFormatter(Number(amount))} ${defaultCurrency}`;
+  return `${nFormatter(Number(amount))} ${includeCurrency ? defaultCurrency : ''}`;
 };

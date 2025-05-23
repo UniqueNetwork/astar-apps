@@ -23,6 +23,7 @@ import { SystemAccount } from 'src/modules/account';
 import { showLoading } from 'src/modules/extrinsic/utils';
 import {
   addXcmTxHistories,
+  astarNativeTokenErcAddr,
   checkIsDeposit,
   fetchXcmBalance,
   monitorBalanceIncreasing,
@@ -50,6 +51,8 @@ import {
 } from 'src/v2/services';
 import { Symbols } from 'src/v2/symbols';
 import { useRouter } from 'vue-router';
+import { XcmAssets } from 'src/store/assets/state';
+import { usdtMinFeeAmount } from 'src/modules/xcm/tokens';
 
 const { Acala, Astar, Karura, Polkadot, Shiden } = xcmChainObj;
 
@@ -79,6 +82,8 @@ export function useXcmBridge(selectedToken: Ref<Asset>) {
   const isDeposit = computed<boolean>(() =>
     srcChain.value ? checkIsDeposit(srcChain.value.name) : false
   );
+  const xcmAssets = computed<XcmAssets>(() => store.getters['assets/getAllAssets']);
+
   const isAstar = computed<boolean>(() => currentNetworkIdx.value === endpointKey.ASTAR);
 
   const isAstarNativeTransfer = computed<boolean>(() => {
@@ -116,6 +121,12 @@ export function useXcmBridge(selectedToken: Ref<Asset>) {
     // Memo: Moonbeam and Moonriver
     ethWalletChains.includes(destChain.value.name)
   );
+
+  const isWithdrawal = computed<boolean>(() => {
+    if (!srcChain.value) return false;
+    const chains = [Chain.ASTAR, Chain.ASTAR_EVM, Chain.SHIDEN, Chain.SHIDEN_EVM];
+    return chains.some((it) => it === srcChain.value.name);
+  });
 
   const { accountData } = useBalance(currentAccount);
 
@@ -271,8 +282,10 @@ export function useXcmBridge(selectedToken: Ref<Asset>) {
       return;
     }
 
+    const isAstr = selectedToken.value.mappedERC20Addr === astarNativeTokenErcAddr;
+
     if (isDeposit.value) {
-      if (!checkIsEnoughMinBal(sendingAmount)) {
+      if (!checkIsEnoughMinBal(sendingAmount) && !isAstr) {
         errMsg.value = t('warning.insufficientOriginChainBalance', {
           chain: selectedToken.value.originChain,
           amount: selectedToken.value.minBridgeAmount,
@@ -282,8 +295,39 @@ export function useXcmBridge(selectedToken: Ref<Asset>) {
       }
       if ((await getOriginChainNativeBal()) === '0') {
         errMsg.value = t('warning.insufficientOriginChainNativeBalance', {
-          chain: selectedToken.value.originChain,
+          chain: srcChain.value.name,
         });
+        return;
+      }
+    } else {
+      // Memo: withdrawal ASTR
+      if (!checkIsEnoughMinBal(sendingAmount) && isAstr) {
+        errMsg.value = t('warning.insufficientOriginChainBalance', {
+          chain: selectedToken.value.originChain,
+          amount: selectedToken.value.minBridgeAmount,
+          token: selectedToken.value.metadata.symbol,
+        });
+        return;
+      }
+    }
+    if (selectedToken.value.metadata.symbol === 'PINK') {
+      // Todo: remove after the runtime upgrade
+      if (isH160.value) {
+        errMsg.value = t('warning.xcmEvmTokenIsDisabled', {
+          token: 'PINK',
+        });
+        return;
+      } else {
+        const usdt = xcmAssets.value.assets.find(
+          (it) => it.metadata.symbol === 'USDT' && it.id === '4294969280'
+        );
+        const usdtBal = usdt ? usdt.userBalance : 0;
+        if (usdtMinFeeAmount > usdtBal) {
+          errMsg.value = t('warning.notEnoughFeeToken', {
+            token: 'USDT',
+          });
+          return;
+        }
       }
     }
   };
@@ -448,7 +492,7 @@ export function useXcmBridge(selectedToken: Ref<Asset>) {
 
       const selectedEndpointStored = String(localStorage.getItem(LOCAL_STORAGE.SELECTED_ENDPOINT));
       const selectedEndpoint = JSON.parse(selectedEndpointStored);
-      const astarEndpoint = selectedEndpoint && Object.values(selectedEndpoint)[0];
+      const astarEndpoint = (selectedEndpoint && Object.values(selectedEndpoint)[0]) as string;
       const isAstarChains =
         srcChain.value.name.toLowerCase().includes('astar') ||
         srcChain.value.name.toLowerCase().includes('shiden');
@@ -657,6 +701,7 @@ export function useXcmBridge(selectedToken: Ref<Asset>) {
     isLoadingApi,
     isAstarNativeTransfer,
     isWithdrawalEthChain,
+    isWithdrawal,
     isInputDestAddrManually,
     inputHandler,
     bridge,

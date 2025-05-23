@@ -127,7 +127,7 @@
           <span> {{ $t('bridge.tokenInfo.tokenHasBeenAdded') }}</span>
         </span>
         <span v-else-if="isBlackListToken" class="text--error">
-          {{ $t('bridge.tokenInfo.tokenNotSupported') }}
+          {{ $t('bridge.tokenInfo.tokenNotSupported', { network: fromChainName }) }}
         </span>
         <span v-else class="text--error">{{ $t('bridge.tokenInfo.interactCarefully') }}</span>
       </div>
@@ -227,10 +227,10 @@ export default defineComponent({
           return String(blockExplorerUrls[EVM.SEPOLIA_TESTNET][0]);
         case EthBridgeNetworkName.AstarZk:
           return String(blockExplorerUrls[EVM.ASTAR_ZKEVM_MAINNET][0]);
-        case EthBridgeNetworkName.Zkatana:
-          return String(blockExplorerUrls[EVM.ZKATANA_TESTNET][0]);
+        case EthBridgeNetworkName.Zkyoto:
+          return String(blockExplorerUrls[EVM.ZKYOTO_TESTNET][0]);
         default:
-          return String(blockExplorerUrls[EVM.ZKATANA_TESTNET][0]);
+          return String(blockExplorerUrls[EVM.ZKYOTO_TESTNET][0]);
       }
     };
 

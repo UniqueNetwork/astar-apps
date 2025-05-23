@@ -7,16 +7,16 @@ import { useStore } from 'src/store';
 import { SubstrateAccount, UnifiedAccount } from 'src/store/general/state';
 import { container } from 'src/v2/common';
 import { IEventAggregator, UnifyAccountMessage } from 'src/v2/messaging';
+import { NftMetadata } from 'src/v2/models';
+import { INftRepository } from 'src/v2/repositories';
 import { IdentityRepository } from 'src/v2/repositories/implementations/IdentityRepository';
 import { IAccountUnificationService } from 'src/v2/services';
 import { Symbols } from 'src/v2/symbols';
 import { computed, ref, watch } from 'vue';
+import { getWcProvider } from './helper/wallet';
 import { useNetworkInfo } from './useNetworkInfo';
-import { INftRepository } from 'src/v2/repositories';
 import { useNft } from './useNft';
-import { NftMetadata } from 'src/v2/models';
-
-export const ETHEREUM_EXTENSION = 'Ethereum Extension';
+import { ETHEREUM_EXTENSION } from 'src/modules/account';
 
 // Memo: Gives some time for syncing
 const DELAY = 100;
@@ -32,6 +32,9 @@ export const useAccount = () => {
   const substrateAccounts = computed(() => store.getters['general/substrateAccounts']);
   const currentAddress = computed(() => store.getters['general/selectedAddress']);
   const unifiedAccount = computed(() => store.getters['general/getUnifiedAccount']);
+  const isLockdropAccount = computed<boolean>(
+    () => !isH160Formatted.value && currentAccountName.value === ETHEREUM_EXTENSION
+  );
 
   const isAccountUnification = computed<boolean>(() => {
     return !!(
@@ -59,16 +62,29 @@ export const useAccount = () => {
       store.commit('general/setCurrentAddress', null);
       store.commit('general/setIsH160Formatted', false);
       store.commit('general/setIsEthWallet', false);
-      store.commit('dapps/setClaimedRewardsAmount', 0);
       store.commit('general/setCurrentWallet', '');
       store.commit('general/setCurrentEcdsaAccount', {
         ethereum: '',
         ss58: '',
         h160: '',
       });
+      const wallet = String(localStorage.getItem(SELECTED_WALLET));
+      if (wallet === SupportWallet.WalletConnect) {
+        const wcProvider = getWcProvider();
+        if (wcProvider) {
+          try {
+            await wcProvider.disconnect();
+          } catch (error) {
+            console.error(error);
+          }
+          localStorage.removeItem('WCM_VERSION');
+          container.unbind(Symbols.WcProvider);
+        }
+      }
       localStorage.removeItem(SELECTED_ADDRESS);
       localStorage.removeItem(SELECTED_WALLET);
       localStorage.removeItem(MULTISIG);
+
       currentAccount.value = '';
       currentAccountName.value = '';
       resolve(true);
@@ -88,26 +104,30 @@ export const useAccount = () => {
 
     if (mapped) {
       const identityRepository = container.get<IdentityRepository>(Symbols.IdentityRepository);
-      const nftRepository = container.get<INftRepository>(Symbols.NftRepository);
+      // const nftRepository = container.get<INftRepository>(Symbols.NftRepository);
       const identity = await identityRepository.getIdentity(isEvmAddress ? mapped : address);
       const name = identity?.display || '';
 
       let avatarUrl: string | undefined;
       let nft: NftMetadata | undefined;
 
-      const avatarContractAddress = identity?.getAvatarContractAddress();
-      const avatarTokenId = identity?.getAvatarTokenId();
-      if (avatarContractAddress && avatarTokenId) {
-        nft = await nftRepository.getNftMetadata(
-          currentNetworkName.value.toLowerCase(),
-          avatarContractAddress,
-          avatarTokenId
-        );
+      // const avatarContractAddress = identity?.getAvatarContractAddress();
+      // const avatarTokenId = identity?.getAvatarTokenId();
+      // if (avatarContractAddress && avatarTokenId) {
+      //   try {
+      //     nft = await nftRepository.getNftMetadata(
+      //       currentNetworkName.value.toLowerCase(),
+      //       avatarContractAddress,
+      //       avatarTokenId
+      //     );
 
-        if (nft) {
-          avatarUrl = getProxiedUrl(nft.image);
-        }
-      }
+      //     if (nft) {
+      //       avatarUrl = getProxiedUrl(nft.image);
+      //     }
+      //   } catch (error) {
+      //     console.error('Unable to fetch nft metadata', error);
+      //   }
+      // }
 
       const account: UnifiedAccount = {
         nativeAddress: isEvmAddress ? mapped : address,
@@ -150,7 +170,6 @@ export const useAccount = () => {
     () => {
       if (currentEcdsaAccount.value.h160 || currentEcdsaAccount.value.ss58) {
         currentAccountName.value = ETHEREUM_EXTENSION;
-        localStorage.setItem(SELECTED_ADDRESS, ETHEREUM_EXTENSION);
         store.commit('general/setIsEthWallet', true);
 
         const { ss58, h160 } = currentEcdsaAccount.value;
@@ -231,6 +250,7 @@ export const useAccount = () => {
     isMultisig,
     isAccountUnification,
     isH160Formatted,
+    isLockdropAccount,
     disconnectAccount,
     showAccountUnificationModal,
     checkIfUnified,

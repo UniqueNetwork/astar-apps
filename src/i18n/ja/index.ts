@@ -67,8 +67,6 @@ export default {
     insufficientExistentialDeposit:
       '{network} ネットワークにある残高が existential depositi 以下です。',
     withdrawalNotSupport: '現在のところ {chain} への送金はサポートされていません。',
-    ledgerNotOpened:
-      'LedgerがAstarアプリを開いていません。アプリを開き、このページを更新してください。',
     claimRewards:
       'DApp ステーキング V3 は 2024 年初頭に登場します! 必ず報酬を受け取り、リリース日を楽しみにお待ちください。',
   },
@@ -157,8 +155,8 @@ export default {
   wallet: {
     connectWallet: 'ウォレットを接続',
     select: 'このポータルに接続するウォレットを選択してください。',
-    nativeAccount: 'Native アカウント',
-    evmAccount: 'EVM アカウント',
+    nativeWallets: 'Native アカウント',
+    evmWallets: 'EVM アカウント',
     multisigAccount: 'マルチシグ アカウント',
     accountUnification: 'Account Unification',
     math: {
@@ -167,7 +165,6 @@ export default {
         'Math Walletの拡張機能であなたのネットワークをShidenに切り替え、このページを更新してください。',
     },
     showBalance: '{token}の残高を表示する',
-    isLedgerAccount: 'これはLedgerアカウントです。Ledgerを接続し、Astar appが動いています。',
     multisig: {
       initPolkasafe: '署名要求のためにPolkaSafe SDKを初期化しています。しばらく時間がかかります。',
       noAccounts: 'マルチシグアカウントが見つかりません。',
@@ -282,13 +279,6 @@ export default {
     availableToClaimTip2:
       'ここに表示されているERA数はdAppごとのものです。未請求のERAが多すぎる場合は、複数回請求する必要があるかもしれません。',
     restakeTip: 'オンにすることで、クレーム時に報酬が自動的に再ステークされます。',
-    claimable: {
-      limitation: '1回の取引で請求できるERA数には制限があります。',
-      nativeWallets: 'Native wallets: ≒56 eras',
-      ledgerX: 'Ledger Nano X: 6 eras',
-      ledgerSPlus: 'Ledger Nano S Plus: 6 eras',
-      ledgerS: 'Ledger Nano S: 2 eras',
-    },
     dappsOwners:
       'dAppsオーナー！私たちはあなたのキャンペーンを促進するお手伝いをします。ご確認ください。',
     dappsOwnersLink: '詳細はこちら',
@@ -537,8 +527,6 @@ export default {
       notSendToEvmExchanges:
         '私は取引所のEVM depositアドレスにトークンを送っていません。それをすると、資金が失われる可能性が高いことを理解しているからです。',
       understandWarning: 'その場合、資金が失われる可能性が高いことを理解しています。',
-      notDestIsLedgerAccount:
-        '宛先のアドレスは、Ledgerネイティブアカウントでも取引所アドレスでもありません。そうであったとすると、資金が失われる可能性が高いことを理解しているからです。',
       notDestIsExchangeAddress: '宛先アドレスが取引所アドレスではありません。',
       youWillReceive: 'あなたは受け取るでしょう。',
       faucetNextRequest: '次のリクエストまでの残り時間',
@@ -698,7 +686,7 @@ export default {
     history: '最近の履歴',
     actionRequired: '必要なアクション',
     claim: '請求',
-    noHistory: '履歴が見つかりません',
+    noTransactions: 'トランザクションが見つかりませんでした',
     completed: '完了',
     inProgress: '進行中',
     approvalMaxAmount: '最高額の承認（オプション）',
@@ -706,15 +694,15 @@ export default {
       title: 'Ethereum ブリッジ',
       text: ' {l1} と {l2} のブリッジとなる資産',
       text2:
-        'テストネットで利用可能！- 体験するには、あなたのウォレットをAstar zKatana (zkEVM testnet)に接続し、testnet ETHを取得してください。',
-      lean: '(もっと学ぶ)',
+        'テストネットで利用可能！- 体験するには、あなたのウォレットをAstar zKyoto (zkEVM testnet)に接続し、testnet ETHを取得してください。',
+      learn: '(もっと学ぶ)',
     },
     astarBridge: {
       title: 'Astar ブリッジ',
       text: 'ASTRトークンと資産を {substrateNetwork} EVMから {l2} へブリッジ',
       text2: '現在開発中',
     },
-    celetBridge: {
+    celerBridge: {
       title: 'Celer ブリッジ',
       text: 'Celerブリッジを経由して {cbridgeNetworkName} Polkadot EVMへ資産をブリッジ',
     },

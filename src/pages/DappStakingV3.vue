@@ -16,3 +16,14 @@ export default defineComponent({
   },
 });
 </script>
+
+<style lang="scss" scoped>
+@import 'src/css/quasar.variables.scss';
+
+.wrapper--dapp-staking {
+  @media (min-width: $lg) {
+    padding-left: 0px;
+    padding-right: 0px;
+  }
+}
+</style>

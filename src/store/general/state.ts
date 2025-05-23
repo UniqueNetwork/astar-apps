@@ -2,7 +2,8 @@ import { GasTip } from '@astar-network/astar-sdk-core';
 import type { Extensions } from 'src/hooks/useMetaExtensions';
 import { endpointKey } from 'src/config/chainEndpoints';
 import { LOCAL_STORAGE } from 'src/config/localStorage';
-import { NftMetadata } from 'src/v2/models';
+import { InflationConfiguration, NftMetadata } from 'src/v2/models';
+import { InflationParam } from 'src/staking-v3';
 
 export type SubstrateAccount = {
   address: string;
@@ -58,7 +59,6 @@ export interface GeneralStateInterface {
   currentNetworkIdx: number;
   isEthWallet: boolean;
   isH160Formatted: boolean;
-  isLedger: boolean;
   currentEcdsaAccount: EcdsaAccount;
   currentAddress: string;
   currentTheme: Theme;
@@ -67,6 +67,9 @@ export interface GeneralStateInterface {
   gas: GasTip | undefined;
   currentBlock: number;
   unifiedAccount?: UnifiedAccount;
+  activeInflationConfiguration: InflationConfiguration | undefined;
+  inflationParameters: InflationParam | undefined;
+  blockTimeInSeconds: number | undefined;
 }
 
 function state(): GeneralStateInterface {
@@ -90,7 +93,6 @@ function state(): GeneralStateInterface {
     currentNetworkIdx: endpointKey.ASTAR,
     isEthWallet: false,
     isH160Formatted: false,
-    isLedger: localStorage.getItem(LOCAL_STORAGE.IS_LEDGER) === 'true',
     currentEcdsaAccount: {
       ethereum: '',
       ss58: '',
@@ -108,6 +110,9 @@ function state(): GeneralStateInterface {
     currentWallet: '',
     gas: undefined,
     currentBlock: 0,
+    activeInflationConfiguration: undefined,
+    inflationParameters: undefined,
+    blockTimeInSeconds: undefined,
   };
 }
 
